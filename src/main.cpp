@@ -2,7 +2,7 @@
 
 #include "config/Config.h"
 
-#include "input/PauseButton.h"
+#include "input/MeasurementButton.h"
 
 #include "network/NetworkManager.h"
 #include "network/WifiCredentialStore.h"
@@ -16,14 +16,19 @@
 #include "sensors/TemperatureSensor.h"
 #include "sensors/TemperatureSensorStore.h"
 
+#include "session/MeasurementSession.h"
+
 
 NetworkManager networkManager;
 
-PressureSensor pressureSensor;
+WifiCredentialStore wifiCredentialStore;
 
-PauseButton pauseButton(
-    PAUSE_BUTTON_PIN
+WifiSetupPortal wifiSetupPortal(
+    wifiCredentialStore
 );
+
+
+PressureSensor pressureSensor;
 
 TemperatureSensorStore temperatureSensorStore;
 
@@ -32,14 +37,20 @@ TemperatureSensor temperatureSensor(
     temperatureSensorStore
 );
 
-WifiCredentialStore wifiCredentialStore;
 
-WifiSetupPortal wifiSetupPortal(
-    wifiCredentialStore
+MeasurementButton measurementButton(
+    MEASUREMENT_BUTTON_PIN
 );
+
+MeasurementSession measurementSession;
+
 
 StatusLed statusLed(
     STATUS_LED_PIN
+);
+
+StatusLed sessionLed(
+    SESSION_LED_PIN
 );
 
 ErrorLed errorLed(
@@ -47,18 +58,98 @@ ErrorLed errorLed(
 );
 
 
-bool lastPauseState = false;
+MeasurementState lastMeasurementState =
+    MeasurementState::IDLE;
 
 bool lastSensorErrorState = false;
 
 unsigned long lastSensorCheckMs = 0;
 
-constexpr unsigned long SENSOR_CHECK_INTERVAL_MS = 1000;
+
+void updateMeasurementLeds()
+{
+    const MeasurementState state =
+        measurementSession.getState();
+
+    switch (state) {
+        case MeasurementState::IDLE:
+            statusLed.on();
+            sessionLed.off();
+            break;
+
+        case MeasurementState::RUNNING:
+            statusLed.off();
+
+            sessionLed.startBlinking(
+                SESSION_LED_BLINK_INTERVAL_MS
+            );
+            break;
+
+        case MeasurementState::PAUSED:
+            statusLed.startBlinking(
+                STATUS_LED_BLINK_INTERVAL_MS
+            );
+
+            sessionLed.startBlinking(
+                SESSION_LED_BLINK_INTERVAL_MS
+            );
+            break;
+    }
+}
+
+
+void updateSensorError()
+{
+    const unsigned long now =
+        millis();
+
+    if (
+        now - lastSensorCheckMs <
+        SENSOR_CHECK_INTERVAL_MS
+    ) {
+        return;
+    }
+
+    lastSensorCheckMs = now;
+
+    const bool sensorError =
+        !temperatureSensor
+            .areAllSensorsConnected();
+
+    if (
+        sensorError ==
+        lastSensorErrorState
+    ) {
+        return;
+    }
+
+    lastSensorErrorState =
+        sensorError;
+
+    if (sensorError) {
+        Serial.println(
+            "Temperature sensor error."
+        );
+
+        errorLed.startBlinking(
+            ERROR_LED_BLINK_INTERVAL_MS
+        );
+    }
+    else {
+        Serial.println(
+            "Temperature sensors OK."
+        );
+
+        errorLed.off();
+    }
+}
 
 
 void setup()
 {
-    Serial.begin(SERIAL_BAUD_RATE);
+    Serial.begin(
+        SERIAL_BAUD_RATE
+    );
 
     const unsigned long serialWaitStart =
         millis();
@@ -84,6 +175,7 @@ void setup()
 
     if (storedCredentials.isValid()) {
         Serial.print("Stored SSID: ");
+
         Serial.println(
             storedCredentials.ssid
         );
@@ -101,11 +193,13 @@ void setup()
     }
 
 
-    // Ein-/Ausgänge
-    pauseButton.begin();
+    // Button
+    measurementButton.begin();
 
+
+    // LEDs
     statusLed.begin();
-
+    sessionLed.begin();
     errorLed.begin();
 
 
@@ -117,20 +211,31 @@ void setup()
     temperatureSensor.begin();
 
 
-    // Initialen Temperatursensor-Status prüfen
-    if (
-        temperatureSensor.areAllSensorsConnected()
-    ) {
-        errorLed.off();
-        lastSensorErrorState = false;
-    }
-    else {
+    // Session
+    measurementSession.begin();
+
+    updateMeasurementLeds();
+
+
+    // Sensorfehler initial prüfen
+    const bool sensorError =
+        !temperatureSensor
+            .areAllSensorsConnected();
+
+    lastSensorErrorState =
+        sensorError;
+
+    if (sensorError) {
         Serial.println(
             "Temperature sensor error."
         );
 
-        errorLed.startBlinking(500);
-        lastSensorErrorState = true;
+        errorLed.startBlinking(
+            ERROR_LED_BLINK_INTERVAL_MS
+        );
+    }
+    else {
+        errorLed.off();
     }
 
 
@@ -141,86 +246,51 @@ void setup()
 
 void loop()
 {
-    pauseButton.update();
+    // Eingaben
+    measurementButton.update();
 
+
+    // Netzwerk
     networkManager.update();
 
     wifiSetupPortal.update();
 
-    statusLed.update();
 
+    // LEDs
+    statusLed.update();
+    sessionLed.update();
     errorLed.update();
 
+
+    // Temperatur läuft immer weiter
     temperatureSensor.update();
 
 
-    // Pause-Taster auswerten
-    const bool paused =
-        pauseButton.isPaused();
+    // Button auswerten
+    if (measurementButton.wasPressed()) {
+        measurementSession.handleButtonPress();
 
-    if (paused != lastPauseState) {
-        if (paused) {
-            Serial.println(
-                "Measurement paused."
-            );
+        const MeasurementState currentState =
+            measurementSession.getState();
 
-            statusLed.startBlinking(500);
+        if (
+            currentState !=
+            lastMeasurementState
+        ) {
+            updateMeasurementLeds();
+
+            lastMeasurementState =
+                currentState;
         }
-        else {
-            Serial.println(
-                "Measurement resumed."
-            );
-
-            statusLed.off();
-        }
-
-        lastPauseState = paused;
     }
 
 
-    // Druckmessung nur wenn nicht pausiert
-    if (!paused) {
+    // Druckmessung nur bei laufender Session
+    if (measurementSession.isRunning()) {
         pressureSensor.update();
     }
 
 
-    // Temperatursensoren regelmäßig prüfen
-    const unsigned long now =
-        millis();
-
-    if (
-        now - lastSensorCheckMs >=
-        SENSOR_CHECK_INTERVAL_MS
-    ) {
-        lastSensorCheckMs = now;
-
-        const bool sensorError =
-            !temperatureSensor
-                .areAllSensorsConnected();
-
-        if (
-            sensorError !=
-            lastSensorErrorState
-        ) {
-            if (sensorError) {
-                Serial.println(
-                    "Temperature sensor error."
-                );
-
-                errorLed.startBlinking(
-                    500
-                );
-            }
-            else {
-                Serial.println(
-                    "Temperature sensors OK."
-                );
-
-                errorLed.off();
-            }
-
-            lastSensorErrorState =
-                sensorError;
-        }
-    }
+    // Sensorfehler prüfen
+    updateSensorError();
 }
