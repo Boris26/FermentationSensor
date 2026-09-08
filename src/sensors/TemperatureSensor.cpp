@@ -354,3 +354,8 @@ bool TemperatureSensor::isSensorConnected(
 
     return false;
 }
+
+void TemperatureSensor::refresh()
+{
+    _sensors.begin();
+}

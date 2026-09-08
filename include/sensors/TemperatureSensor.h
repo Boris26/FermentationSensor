@@ -18,6 +18,7 @@ public:
     void begin();
     void update();
 
+    void refresh();
     bool areAllSensorsConnected();
 
 private:

@@ -61,7 +61,9 @@ ErrorLed errorLed(
 MeasurementState lastMeasurementState =
     MeasurementState::IDLE;
 
-bool lastSensorErrorState = false;
+
+bool sensorsReady = false;
+bool sessionInitialized = false;
 
 unsigned long lastSensorCheckMs = 0;
 
@@ -98,8 +100,61 @@ void updateMeasurementLeds()
 }
 
 
-void updateSensorError()
+void initializeSessionIfSensorsReady()
 {
+    const bool sensorsOk =
+        temperatureSensor
+            .areAllSensorsConnected();
+
+    if (!sensorsOk) {
+        sensorsReady = false;
+
+        statusLed.off();
+        sessionLed.off();
+
+        errorLed.startBlinking(
+            ERROR_LED_BLINK_INTERVAL_MS
+        );
+
+        Serial.println(
+            "Temperature sensors not ready."
+        );
+
+        return;
+    }
+
+
+    sensorsReady = true;
+
+    errorLed.off();
+
+
+    if (!sessionInitialized) {
+        measurementSession.begin();
+
+        sessionInitialized = true;
+
+        lastMeasurementState =
+            measurementSession.getState();
+
+        updateMeasurementLeds();
+
+        Serial.println(
+            "Temperature sensors ready."
+        );
+
+        Serial.println(
+            "Measurement session initialized."
+        );
+    }
+}
+
+void updateSensorInitialization()
+{
+    if (sessionInitialized) {
+        return;
+    }
+
     const unsigned long now =
         millis();
 
@@ -112,36 +167,9 @@ void updateSensorError()
 
     lastSensorCheckMs = now;
 
-    const bool sensorError =
-        !temperatureSensor
-            .areAllSensorsConnected();
+    temperatureSensor.refresh();
 
-    if (
-        sensorError ==
-        lastSensorErrorState
-    ) {
-        return;
-    }
-
-    lastSensorErrorState =
-        sensorError;
-
-    if (sensorError) {
-        Serial.println(
-            "Temperature sensor error."
-        );
-
-        errorLed.startBlinking(
-            ERROR_LED_BLINK_INTERVAL_MS
-        );
-    }
-    else {
-        Serial.println(
-            "Temperature sensors OK."
-        );
-
-        errorLed.off();
-    }
+    initializeSessionIfSensorsReady();
 }
 
 
@@ -211,32 +239,9 @@ void setup()
     temperatureSensor.begin();
 
 
-    // Session
-    measurementSession.begin();
-
-    updateMeasurementLeds();
-
-
-    // Sensorfehler initial prüfen
-    const bool sensorError =
-        !temperatureSensor
-            .areAllSensorsConnected();
-
-    lastSensorErrorState =
-        sensorError;
-
-    if (sensorError) {
-        Serial.println(
-            "Temperature sensor error."
-        );
-
-        errorLed.startBlinking(
-            ERROR_LED_BLINK_INTERVAL_MS
-        );
-    }
-    else {
-        errorLed.off();
-    }
+    // Erst Sensoren prüfen.
+    // Session wird nur bei gültigen Sensoren gestartet.
+    initializeSessionIfSensorsReady();
 
 
     Serial.print(DEVICE_ID);
@@ -262,12 +267,21 @@ void loop()
     errorLed.update();
 
 
-    // Temperatur läuft immer weiter
+    // Temperatursensor läuft unabhängig von der Session weiter
     temperatureSensor.update();
 
 
-    // Button auswerten
-    if (measurementButton.wasPressed()) {
+    // Falls Sensoren beim Start fehlten:
+    // regelmäßig erneut versuchen
+    updateSensorInitialization();
+
+
+    // Button nur verwenden,
+    // wenn die Session erfolgreich initialisiert wurde
+    if (
+        sessionInitialized &&
+        measurementButton.wasPressed()
+    ) {
         measurementSession.handleButtonPress();
 
         const MeasurementState currentState =
@@ -286,11 +300,10 @@ void loop()
 
 
     // Druckmessung nur bei laufender Session
-    if (measurementSession.isRunning()) {
+    if (
+        sessionInitialized &&
+        measurementSession.isRunning()
+    ) {
         pressureSensor.update();
     }
-
-
-    // Sensorfehler prüfen
-    updateSensorError();
 }
