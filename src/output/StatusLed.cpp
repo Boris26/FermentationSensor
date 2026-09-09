@@ -51,6 +51,10 @@ void StatusLed::startBlinking(unsigned long intervalMs)
 {
     blinkIntervalMs_ = intervalMs;
     blinking_ = true;
+
+    ledState_ = true;
+    digitalWrite(pin_, HIGH);
+
     lastToggleMs_ = millis();
 }
 

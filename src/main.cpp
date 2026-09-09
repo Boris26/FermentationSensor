@@ -68,6 +68,18 @@ bool sessionInitialized = false;
 unsigned long lastSensorCheckMs = 0;
 
 
+enum class ErrorState
+{
+    NONE,
+    SENSOR,
+    NETWORK
+};
+
+
+ErrorState lastErrorState =
+    ErrorState::NONE;
+
+
 void updateMeasurementLeds()
 {
     const MeasurementState state =
@@ -100,21 +112,69 @@ void updateMeasurementLeds()
 }
 
 
+void updateErrorLed()
+{
+    ErrorState currentErrorState =
+        ErrorState::NONE;
+
+
+    // Sensor error has the highest priority.
+    if (!sensorsReady) {
+        currentErrorState =
+            ErrorState::SENSOR;
+    }
+    else if (!networkManager.isConnected()) {
+        currentErrorState =
+            ErrorState::NETWORK;
+    }
+
+
+    // Do not restart the blink timer
+    // on every loop iteration.
+    if (
+        currentErrorState ==
+        lastErrorState
+    ) {
+        return;
+    }
+
+
+    lastErrorState =
+        currentErrorState;
+
+
+    switch (currentErrorState) {
+        case ErrorState::NONE:
+            errorLed.off();
+            break;
+
+        case ErrorState::SENSOR:
+            errorLed.startBlinking(
+                ERROR_LED_BLINK_INTERVAL_MS
+            );
+            break;
+
+        case ErrorState::NETWORK:
+            errorLed.startBlinking(
+                NETWORK_ERROR_LED_BLINK_INTERVAL_MS
+            );
+            break;
+    }
+}
+
+
 void initializeSessionIfSensorsReady()
 {
     const bool sensorsOk =
         temperatureSensor
             .areAllSensorsConnected();
 
+
     if (!sensorsOk) {
         sensorsReady = false;
 
         statusLed.off();
         sessionLed.off();
-
-        errorLed.startBlinking(
-            ERROR_LED_BLINK_INTERVAL_MS
-        );
 
         Serial.println(
             "Temperature sensors not ready."
@@ -125,8 +185,6 @@ void initializeSessionIfSensorsReady()
 
 
     sensorsReady = true;
-
-    errorLed.off();
 
 
     if (!sessionInitialized) {
@@ -149,14 +207,17 @@ void initializeSessionIfSensorsReady()
     }
 }
 
+
 void updateSensorInitialization()
 {
     if (sessionInitialized) {
         return;
     }
 
+
     const unsigned long now =
         millis();
+
 
     if (
         now - lastSensorCheckMs <
@@ -165,7 +226,9 @@ void updateSensorInitialization()
         return;
     }
 
+
     lastSensorCheckMs = now;
+
 
     temperatureSensor.refresh();
 
@@ -179,8 +242,10 @@ void setup()
         SERIAL_BAUD_RATE
     );
 
+
     const unsigned long serialWaitStart =
         millis();
+
 
     while (
         !Serial &&
@@ -189,20 +254,40 @@ void setup()
         delay(10);
     }
 
+
     Serial.println();
 
     Serial.print(DEVICE_ID);
     Serial.println(" starting...");
 
 
-    // WLAN
+    // LEDs
+    statusLed.begin();
+    sessionLed.begin();
+    errorLed.begin();
+
+
+    // Initialization indication
+    statusLed.startBlinking(
+        INIT_LED_BLINK_INTERVAL_MS
+    );
+
+    sessionLed.off();
+    errorLed.off();
+
+
+    // WiFi
     wifiCredentialStore.begin();
+
 
     WifiCredentials storedCredentials =
         wifiCredentialStore.load();
 
+
     if (storedCredentials.isValid()) {
-        Serial.print("Stored SSID: ");
+        Serial.print(
+            "Stored SSID: "
+        );
 
         Serial.println(
             storedCredentials.ssid
@@ -225,13 +310,7 @@ void setup()
     measurementButton.begin();
 
 
-    // LEDs
-    statusLed.begin();
-    sessionLed.begin();
-    errorLed.begin();
-
-
-    // Sensoren
+    // Sensors
     pressureSensor.begin();
 
     temperatureSensorStore.begin();
@@ -239,26 +318,49 @@ void setup()
     temperatureSensor.begin();
 
 
-    // Erst Sensoren prüfen.
-    // Session wird nur bei gültigen Sensoren gestartet.
-    initializeSessionIfSensorsReady();
+    // Session initialization is intentionally
+    // performed later in loop().
+    // This allows the initialization LED
+    // to become visible.
 
 
     Serial.print(DEVICE_ID);
-    Serial.println(" ready.");
+    Serial.println(" setup complete.");
 }
 
 
 void loop()
 {
-    // Eingaben
+    // Input
     measurementButton.update();
 
 
-    // Netzwerk
+    // Network
     networkManager.update();
 
     wifiSetupPortal.update();
+
+
+    // Temperature sensor
+    temperatureSensor.update();
+
+
+    // Initialize the measurement session
+    // once the required sensors are ready.
+    updateSensorInitialization();
+
+
+    // Update error state.
+    //
+    // Sensor error:
+    // normal blinking
+    //
+    // WiFi unavailable:
+    // fast blinking
+    //
+    // Everything OK:
+    // LED off
+    updateErrorLed();
 
 
     // LEDs
@@ -267,25 +369,18 @@ void loop()
     errorLed.update();
 
 
-    // Temperatursensor läuft unabhängig von der Session weiter
-    temperatureSensor.update();
-
-
-    // Falls Sensoren beim Start fehlten:
-    // regelmäßig erneut versuchen
-    updateSensorInitialization();
-
-
-    // Button nur verwenden,
-    // wenn die Session erfolgreich initialisiert wurde
+    // Button is only active after
+    // successful session initialization.
     if (
         sessionInitialized &&
         measurementButton.wasPressed()
     ) {
         measurementSession.handleButtonPress();
 
+
         const MeasurementState currentState =
             measurementSession.getState();
+
 
         if (
             currentState !=
@@ -299,7 +394,8 @@ void loop()
     }
 
 
-    // Druckmessung nur bei laufender Session
+    // Pressure measurement only while
+    // the measurement session is running.
     if (
         sessionInitialized &&
         measurementSession.isRunning()

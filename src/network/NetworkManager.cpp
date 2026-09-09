@@ -5,6 +5,7 @@
 namespace
 {
 constexpr unsigned long CONNECTION_RETRY_INTERVAL_MS = 10000;
+constexpr unsigned long WIFI_CONNECTION_TIMEOUT_MS = 1000;
 }
 
 void NetworkManager::begin(const WifiCredentials& credentials)
@@ -15,6 +16,13 @@ void NetworkManager::begin(const WifiCredentials& credentials)
         Serial.println("NetworkManager: WiFi module not found.");
         return;
     }
+
+    // WiFi.begin() may block while trying to establish
+    // the connection. Keep this timeout short so that
+    // the main loop can continue running.
+    WiFi.setTimeout(
+        WIFI_CONNECTION_TIMEOUT_MS
+    );
 
     _credentials = credentials;
 
@@ -57,7 +65,10 @@ void NetworkManager::update()
         return;
     }
 
-    if (now - _lastConnectionAttempt >= CONNECTION_RETRY_INTERVAL_MS) {
+    if (
+        now - _lastConnectionAttempt >=
+        CONNECTION_RETRY_INTERVAL_MS
+    ) {
         Serial.println(
             "NetworkManager: connection failed, retrying..."
         );
