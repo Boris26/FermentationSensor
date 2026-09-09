@@ -20,7 +20,7 @@
 #include "storage/TemperatureSensorStore.h"
 #include "storage/WifiCredentialStore.h"
 #include "device/DeviceIdentity.h"
-
+#include "network/DiscoveryService.h"
 
 FlashStorage flashStorage;
 
@@ -29,6 +29,11 @@ NetworkManager networkManager;
 
 DeviceIdentity deviceIdentity(
     flashStorage
+);
+
+
+DiscoveryService discoveryService(
+    deviceIdentity
 );
 
 
@@ -360,6 +365,8 @@ void loop()
     networkManager.update();
 
     wifiSetupPortal.update();
+
+    discoveryService.update();
 
 
     // Temperature sensor
