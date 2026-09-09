@@ -619,7 +619,9 @@ void loop()
     ) {
         serverClient.sendTemperatureMeasurement(
             temperatureSensor.getBeerTemperature(),
-            temperatureSensor.getAmbientTemperature()
+            temperatureSensor.getAmbientTemperature(),
+            pressureSensor.isAvailable(),
+            pressureSensor.getPressurePa()
         );
     }
 

@@ -33,7 +33,9 @@ public:
 
     void sendTemperatureMeasurement(
         float beerTemperature,
-        float ambientTemperature
+        float ambientTemperature,
+        bool pressureAvailable,
+        float pressurePa
     );
 
 

@@ -657,7 +657,9 @@ bool ServerClient::parseMessageType(
 
 void ServerClient::sendTemperatureMeasurement(
     float beerTemperature,
-    float ambientTemperature
+    float ambientTemperature,
+    bool pressureAvailable,
+    float pressurePa
 )
 {
     if (
@@ -687,6 +689,16 @@ void ServerClient::sendTemperatureMeasurement(
         ambientTemperature,
         1
     );
+
+    if (pressureAvailable) {
+        message += ",";
+        message += "\"pressurePa\":";
+        message += String(
+            pressurePa,
+            2
+        );
+    }
+
     message += "}";
 
     if (

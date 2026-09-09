@@ -1,15 +1,15 @@
 #pragma once
 
-#include <Arduino.h>
-
 class PressureSensor
 {
 public:
     void begin();
     void update();
 
-private:
-    static constexpr unsigned long UPDATE_INTERVAL_MS = 1000;
+    bool isAvailable() const;
+    float getPressurePa() const;
 
-    unsigned long _lastUpdateMs = 0;
+private:
+    bool _available = false;
+    float _pressurePa = 0.0f;
 };
