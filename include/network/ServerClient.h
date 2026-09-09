@@ -23,6 +23,13 @@ public:
 
     bool isConnected() const;
 
+    bool isRegistered() const;
+
+      void sendTemperatureMeasurement(
+        float beerTemperature,
+        float ambientTemperature
+    );
+
 
 private:
     void connect();
@@ -32,6 +39,10 @@ private:
     void sendRegistration();
 
     void handleIncomingMessages();
+
+    void handleMessage(
+        const String& message
+    );
 
 
     DeviceIdentity& _deviceIdentity;
@@ -47,6 +58,8 @@ private:
     bool _configured = false;
 
     bool _connected = false;
+
+    bool _registered = false;
 
 
     unsigned long _lastConnectionAttemptMs = 0;

@@ -29,6 +29,8 @@ void ServerClient::begin(
 
     _connected = false;
 
+    _registered = false;
+
 
     Serial.print(
         "ServerClient: configured for ws://"
@@ -96,6 +98,12 @@ void ServerClient::update()
 bool ServerClient::isConnected() const
 {
     return _connected;
+}
+
+
+bool ServerClient::isRegistered() const
+{
+    return _registered;
 }
 
 
@@ -178,11 +186,15 @@ void ServerClient::connect()
 
         _connected = false;
 
+        _registered = false;
+
         return;
     }
 
 
     _connected = true;
+
+    _registered = false;
 
 
     Serial.println(
@@ -204,6 +216,8 @@ void ServerClient::disconnect()
 
 
     _connected = false;
+
+    _registered = false;
 
 
     if (_webSocketClient != nullptr) {
@@ -229,48 +243,31 @@ void ServerClient::sendRegistration()
         return;
     }
 
-
     String message;
 
-    message.reserve(
-        180
-    );
+    message.reserve(180);
 
-
-    message +=
-        "{\"type\":\"REGISTER_SENSOR\",";
-
-    message +=
-        "\"deviceId\":\"";
-
-    message +=
-        _deviceIdentity.getDeviceId();
-
-    message +=
-        "\",";
-
-    message +=
-        "\"deviceName\":\"";
-
-    message +=
-        _deviceIdentity.getDeviceName();
-
-    message +=
-        "\"}";
-
+    message += "{\"type\":\"REGISTER_SENSOR\",";
+    message += "\"deviceId\":\"";
+    message += _deviceIdentity.getDeviceId();
+    message += "\",";
+    message += "\"deviceName\":\"";
+    message += _deviceIdentity.getDeviceName();
+    message += "\"}";
 
     _webSocketClient->beginMessage(
         TYPE_TEXT
     );
 
-    _webSocketClient->print(
-        message
+    _webSocketClient->write(
+        reinterpret_cast<const uint8_t*>(
+            message.c_str()
+        ),
+        message.length()
     );
-
 
     const int result =
         _webSocketClient->endMessage();
-
 
     if (result == 0) {
         Serial.print(
@@ -354,4 +351,106 @@ void ServerClient::handleIncomingMessages()
     Serial.println(
         message
     );
+
+
+    handleMessage(
+        message
+    );
+}
+
+
+void ServerClient::handleMessage(
+    const String& message
+)
+{
+    if (
+        message.indexOf(
+            "\"type\":\"ACK\""
+        ) >= 0
+    ) {
+        if (!_registered) {
+            _registered = true;
+
+
+            Serial.println(
+                "ServerClient: sensor registered."
+            );
+        }
+
+
+        return;
+    }
+
+
+    Serial.println(
+        "ServerClient: unknown message."
+    );
+}
+
+void ServerClient::sendTemperatureMeasurement(
+    float beerTemperature,
+    float ambientTemperature
+)
+{
+    if (
+        !_connected ||
+        !_registered ||
+        _webSocketClient == nullptr
+    ) {
+        return;
+    }
+
+    String message;
+
+    message.reserve(180);
+
+    message += "{\"type\":\"TEMPERATURE_MEASUREMENT\",";
+    message += "\"deviceId\":\"";
+    message += _deviceIdentity.getDeviceId();
+    message += "\",";
+    message += "\"beerTemperature\":";
+    message += String(
+        beerTemperature,
+        1
+    );
+    message += ",";
+    message += "\"ambientTemperature\":";
+    message += String(
+        ambientTemperature,
+        1
+    );
+    message += "}";
+
+    _webSocketClient->beginMessage(
+        TYPE_TEXT
+    );
+
+    _webSocketClient->write(
+        reinterpret_cast<const uint8_t*>(
+            message.c_str()
+        ),
+        message.length()
+    );
+
+    const int result =
+        _webSocketClient->endMessage();
+
+    if (result == 0) {
+        Serial.print(
+            "ServerClient: temperature measurement sent: "
+        );
+
+        Serial.println(
+            message
+        );
+    }
+    else {
+        Serial.print(
+            "ServerClient: failed to send temperature measurement, result="
+        );
+
+        Serial.println(
+            result
+        );
+    }
 }

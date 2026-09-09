@@ -325,63 +325,16 @@ void updateServerClient()
 
 
     if (!serverClientStarted) {
-        Serial.println(
-            "ServerClient: checking stored server configuration..."
-        );
-
-
         const ServerConfiguration configuration =
             serverConfigurationStore.load();
 
 
-        Serial.print(
-            "ServerClient: host="
-        );
-
-        Serial.println(
-            configuration.host
-        );
-
-
-        Serial.print(
-            "ServerClient: port="
-        );
-
-        Serial.println(
-            configuration.port
-        );
-
-
-        Serial.print(
-            "ServerClient: path="
-        );
-
-        Serial.println(
-            configuration.path
-        );
-
-
         if (configuration.isValid()) {
-            Serial.println(
-                "ServerClient: configuration valid."
-            );
-
-
             serverClient.begin(
                 configuration
             );
 
-
             serverClientStarted = true;
-        }
-        else {
-            Serial.println(
-                "ServerClient: no valid server configuration."
-            );
-
-
-            // Prevent flooding the serial output.
-            delay(1000);
         }
     }
 
@@ -576,12 +529,29 @@ void loop()
 
 
     // Temperature sensor
-    temperatureSensor.update();
+    const bool newTemperatureMeasurement =
+        temperatureSensor.update();
 
 
     // Initialize the measurement session
     // once the required sensors are ready.
     updateSensorInitialization();
+
+
+    // Send fresh temperature measurements
+    // only while the session is running
+    // and the sensor is registered.
+    if (
+        newTemperatureMeasurement &&
+        sessionInitialized &&
+        measurementSession.isRunning() &&
+        serverClient.isRegistered()
+    ) {
+        serverClient.sendTemperatureMeasurement(
+            temperatureSensor.getBeerTemperature(),
+            temperatureSensor.getAmbientTemperature()
+        );
+    }
 
 
     // Update error state.

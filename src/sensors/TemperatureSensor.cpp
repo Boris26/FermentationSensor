@@ -189,60 +189,113 @@ void TemperatureSensor::begin()
     }
 }
 
-void TemperatureSensor::update()
+bool TemperatureSensor::update()
 {
-    const unsigned long now = millis();
+    const unsigned long now =
+        millis();
+
 
     if (
         now - _lastMeasurementMs <
         TEMPERATURE_INTERVAL_MS
     ) {
-        return;
+        return false;
     }
 
-    _lastMeasurementMs = now;
+
+    _lastMeasurementMs =
+        now;
+
 
     _sensors.requestTemperatures();
+
 
     const int sensorCount =
         _sensors.getDeviceCount();
 
+
+    bool measurementReceived =
+        false;
+
+
     for (int i = 0; i < sensorCount; ++i) {
         DeviceAddress address;
+
 
         if (!_sensors.getAddress(address, i)) {
             continue;
         }
 
+
         const float temperature =
             _sensors.getTempC(address);
 
+
         if (isAmbientSensor(address)) {
+            _ambientTemperature =
+                temperature;
+
+            measurementReceived =
+                true;
+
+
             Serial.print(
                 "Ambient temperature: "
             );
 
-            Serial.print(temperature);
-            Serial.println(" C");
+            Serial.print(
+                temperature
+            );
+
+            Serial.println(
+                " C"
+            );
         }
         else if (isBeerSensor(address)) {
+            _beerTemperature =
+                temperature;
+
+            measurementReceived =
+                true;
+
+
             Serial.print(
                 "Beer temperature: "
             );
 
-            Serial.print(temperature);
-            Serial.println(" C");
+            Serial.print(
+                temperature
+            );
+
+            Serial.println(
+                " C"
+            );
         }
         else {
-            Serial.print("Unknown sensor ");
+            Serial.print(
+                "Unknown sensor "
+            );
 
-            printSensorAddress(address);
+            printSensorAddress(
+                address
+            );
 
-            Serial.print(": ");
-            Serial.print(temperature);
-            Serial.println(" C");
+            Serial.print(
+                ": "
+            );
+
+            Serial.print(
+                temperature
+            );
+
+            Serial.println(
+                " C"
+            );
         }
     }
+
+
+    return measurementReceived;
 }
 
 bool TemperatureSensor::areAllSensorsConnected()
@@ -358,4 +411,15 @@ bool TemperatureSensor::isSensorConnected(
 void TemperatureSensor::refresh()
 {
     _sensors.begin();
+}
+
+float TemperatureSensor::getBeerTemperature() const
+{
+    return _beerTemperature;
+}
+
+
+float TemperatureSensor::getAmbientTemperature() const
+{
+    return _ambientTemperature;
 }

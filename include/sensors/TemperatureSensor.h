@@ -16,10 +16,13 @@ public:
     );
 
     void begin();
-    void update();
+    bool update();
 
     void refresh();
     bool areAllSensorsConnected();
+
+    float getBeerTemperature() const;
+    float getAmbientTemperature() const;
 
 private:
     void printSensorAddress(
@@ -51,6 +54,12 @@ private:
 
     TemperatureSensorId _ambientSensorId;
     TemperatureSensorId _beerSensorId;
+
+    float _ambientTemperature =
+        DEVICE_DISCONNECTED_C;
+
+    float _beerTemperature =
+        DEVICE_DISCONNECTED_C;
 
     unsigned long _lastMeasurementMs = 0;
 };
