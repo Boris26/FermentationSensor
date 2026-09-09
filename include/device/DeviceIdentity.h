@@ -21,11 +21,14 @@ public:
     );
 
 private:
-    bool loadDeviceId();
-    bool loadDeviceName();
+    struct StoredDeviceConfiguration
+    {
+        char deviceId[37] = {};
+        char deviceName[64] = {};
+    };
 
-    bool saveDeviceId();
-    bool saveDeviceName();
+    bool loadConfiguration();
+    bool saveConfiguration();
 
     String generateUuid() const;
 

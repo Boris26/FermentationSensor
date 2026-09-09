@@ -1,14 +1,12 @@
 #include "device/DeviceIdentity.h"
 
 #include <Arduino.h>
+#include <cstring>
 
 namespace
 {
-constexpr char DEVICE_ID_KEY[] =
-    "device_uuid";
-
-constexpr char DEVICE_NAME_KEY[] =
-    "device_name";
+constexpr char DEVICE_CONFIG_KEY[] =
+    "device_config";
 }
 
 
@@ -27,14 +25,20 @@ bool DeviceIdentity::begin()
     );
 
 
-    if (!loadDeviceId()) {
+    if (!loadConfiguration()) {
+
         _deviceId =
             generateUuid();
 
+        _deviceName =
+            generateDefaultName(
+                _deviceId
+            );
 
-        if (!saveDeviceId()) {
+
+        if (!saveConfiguration()) {
             Serial.println(
-                "DeviceIdentity: failed to save UUID."
+                "DeviceIdentity: failed to save configuration."
             );
 
             return false;
@@ -48,23 +52,6 @@ bool DeviceIdentity::begin()
         Serial.println(
             _deviceId
         );
-    }
-
-
-    if (!loadDeviceName()) {
-        _deviceName =
-            generateDefaultName(
-                _deviceId
-            );
-
-
-        if (!saveDeviceName()) {
-            Serial.println(
-                "DeviceIdentity: failed to save device name."
-            );
-
-            return false;
-        }
 
 
         Serial.print(
@@ -142,7 +129,7 @@ bool DeviceIdentity::setDeviceName(
         trimmedName;
 
 
-    if (!saveDeviceName()) {
+    if (!saveConfiguration()) {
         Serial.println(
             "DeviceIdentity: failed to save device name."
         );
@@ -164,38 +151,70 @@ bool DeviceIdentity::setDeviceName(
 }
 
 
-bool DeviceIdentity::loadDeviceId()
+bool DeviceIdentity::loadConfiguration()
 {
-    return _storage.getString(
-        DEVICE_ID_KEY,
-        _deviceId
-    );
+    StoredDeviceConfiguration stored = {};
+
+
+    if (
+        !_storage.getBytes(
+            DEVICE_CONFIG_KEY,
+            &stored,
+            sizeof(stored)
+        )
+    ) {
+        return false;
+    }
+
+
+    if (
+        stored.deviceId[0] == '\0' ||
+        stored.deviceName[0] == '\0'
+    ) {
+        return false;
+    }
+
+
+    _deviceId =
+        String(stored.deviceId);
+
+    _deviceName =
+        String(stored.deviceName);
+
+
+    return true;
 }
 
 
-bool DeviceIdentity::loadDeviceName()
+bool DeviceIdentity::saveConfiguration()
 {
-    return _storage.getString(
-        DEVICE_NAME_KEY,
-        _deviceName
+    if (
+        _deviceId.isEmpty() ||
+        _deviceName.isEmpty()
+    ) {
+        return false;
+    }
+
+
+    StoredDeviceConfiguration stored = {};
+
+
+    _deviceId.toCharArray(
+        stored.deviceId,
+        sizeof(stored.deviceId)
     );
-}
 
 
-bool DeviceIdentity::saveDeviceId()
-{
-    return _storage.setString(
-        DEVICE_ID_KEY,
-        _deviceId
+    _deviceName.toCharArray(
+        stored.deviceName,
+        sizeof(stored.deviceName)
     );
-}
 
 
-bool DeviceIdentity::saveDeviceName()
-{
-    return _storage.setString(
-        DEVICE_NAME_KEY,
-        _deviceName
+    return _storage.setBytes(
+        DEVICE_CONFIG_KEY,
+        &stored,
+        sizeof(stored)
     );
 }
 

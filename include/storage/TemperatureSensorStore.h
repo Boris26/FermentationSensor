@@ -30,18 +30,31 @@ public:
     bool clearBeerSensor();
 
 private:
-    bool hasSensor(
-        const char* key
+    struct StoredTemperatureConfiguration
+    {
+        bool hasAmbient = false;
+        bool hasBeer = false;
+
+        uint8_t ambient[
+            TemperatureSensorId::SIZE
+        ] = {};
+
+        uint8_t beer[
+            TemperatureSensorId::SIZE
+        ] = {};
+    };
+
+    bool loadConfiguration(
+        StoredTemperatureConfiguration& configuration
     ) const;
 
-    TemperatureSensorId loadSensor(
-        const char* key
-    ) const;
-
-    bool saveSensor(
-        const char* key,
-        const TemperatureSensorId& sensorId
+    bool saveConfiguration(
+        const StoredTemperatureConfiguration& configuration
     );
+
+    TemperatureSensorId toSensorId(
+        const uint8_t* bytes
+    ) const;
 
     FlashStorage& _storage;
 

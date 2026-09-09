@@ -1,6 +1,7 @@
 #include <Arduino.h>
-
+#include <kvstore_global_api.h>
 #include "config/Config.h"
+#include <kv_config.h>
 
 #include "input/MeasurementButton.h"
 
@@ -21,6 +22,8 @@
 #include "storage/WifiCredentialStore.h"
 #include "device/DeviceIdentity.h"
 #include "network/DiscoveryService.h"
+#include "network/BootstrapServer.h"
+#include "storage/ServerConfigurationStore.h"
 
 FlashStorage flashStorage;
 
@@ -43,6 +46,14 @@ WifiCredentialStore wifiCredentialStore(
 
 WifiSetupPortal wifiSetupPortal(
     wifiCredentialStore
+);
+
+ServerConfigurationStore serverConfigurationStore(
+    flashStorage
+);
+
+BootstrapServer bootstrapServer(
+    serverConfigurationStore
 );
 
 
@@ -261,8 +272,7 @@ void setup()
 {
     Serial.begin(
         SERIAL_BAUD_RATE
-    );
-
+    );    
 
     const unsigned long serialWaitStart =
         millis();
@@ -275,12 +285,35 @@ void setup()
         delay(10);
     }
 
+    mbed::bd_addr_t startAddress = 0;
+mbed::bd_size_t size = 0;
+
+const int result =
+    kv_get_default_flash_addresses(
+        &startAddress,
+        &size
+    );
+
+Serial.print("KV flash result: ");
+Serial.println(result);
+
+Serial.print("KV start address: 0x");
+Serial.println(
+    static_cast<unsigned long>(startAddress),
+    HEX
+);
+
+Serial.print("KV size: ");
+Serial.println(
+    static_cast<unsigned long>(size)
+);
+
 
     Serial.println();
 
     Serial.print(DEVICE_ID);
     Serial.println(" starting...");
-
+    
 
     // LEDs
     statusLed.begin();
@@ -304,6 +337,18 @@ void setup()
 
     // WiFi
     wifiCredentialStore.begin();
+
+     // Sensors
+    pressureSensor.begin();
+
+    temperatureSensorStore.begin();
+    serverConfigurationStore.begin();
+
+    temperatureSensor.begin();
+    
+    //flashStorage.clearAll();
+
+    flashStorage.debugPrintAll();
 
 
     WifiCredentials storedCredentials =
@@ -336,12 +381,7 @@ void setup()
     measurementButton.begin();
 
 
-    // Sensors
-    pressureSensor.begin();
-
-    temperatureSensorStore.begin();
-
-    temperatureSensor.begin();
+   
 
 
     // Session initialization is intentionally
@@ -367,6 +407,8 @@ void loop()
     wifiSetupPortal.update();
 
     discoveryService.update();
+
+    bootstrapServer.update();
 
 
     // Temperature sensor

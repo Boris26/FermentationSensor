@@ -36,4 +36,15 @@ public:
     bool exists(
         const char* key
     );
+
+    bool clearAll();
+
+    bool clearWifi();
+
+    void debugPrintAll();
+
+private:
+    String buildKey(
+        const char* key
+    ) const;
 };
