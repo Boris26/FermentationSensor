@@ -1,11 +1,17 @@
 #include <Arduino.h>
-#include <kvstore_global_api.h>
-#include "config/Config.h"
 #include <kv_config.h>
+#include <kvstore_global_api.h>
+
+#include "config/Config.h"
+
+#include "device/DeviceIdentity.h"
 
 #include "input/MeasurementButton.h"
 
+#include "network/BootstrapServer.h"
+#include "network/DiscoveryService.h"
 #include "network/NetworkManager.h"
+#include "network/ServerClient.h"
 #include "network/WifiCredentials.h"
 #include "network/WifiSetupPortal.h"
 
@@ -18,26 +24,20 @@
 #include "session/MeasurementSession.h"
 
 #include "storage/FlashStorage.h"
+#include "storage/ServerConfigurationStore.h"
 #include "storage/TemperatureSensorStore.h"
 #include "storage/WifiCredentialStore.h"
-#include "device/DeviceIdentity.h"
-#include "network/DiscoveryService.h"
-#include "network/BootstrapServer.h"
-#include "storage/ServerConfigurationStore.h"
+
 
 FlashStorage flashStorage;
 
-
-NetworkManager networkManager;
 
 DeviceIdentity deviceIdentity(
     flashStorage
 );
 
 
-DiscoveryService discoveryService(
-    deviceIdentity
-);
+NetworkManager networkManager;
 
 
 WifiCredentialStore wifiCredentialStore(
@@ -48,12 +48,22 @@ WifiSetupPortal wifiSetupPortal(
     wifiCredentialStore
 );
 
+
+DiscoveryService discoveryService(
+    deviceIdentity
+);
+
+
 ServerConfigurationStore serverConfigurationStore(
     flashStorage
 );
 
 BootstrapServer bootstrapServer(
     serverConfigurationStore
+);
+
+ServerClient serverClient(
+    deviceIdentity
 );
 
 
@@ -73,6 +83,7 @@ TemperatureSensor temperatureSensor(
 MeasurementButton measurementButton(
     MEASUREMENT_BUTTON_PIN
 );
+
 
 MeasurementSession measurementSession;
 
@@ -95,7 +106,11 @@ MeasurementState lastMeasurementState =
 
 
 bool sensorsReady = false;
+
 bool sessionInitialized = false;
+
+bool serverClientStarted = false;
+
 
 unsigned long lastSensorCheckMs = 0;
 
@@ -117,21 +132,33 @@ void updateMeasurementLeds()
     const MeasurementState state =
         measurementSession.getState();
 
+
     switch (state) {
+
         case MeasurementState::IDLE:
+        {
             statusLed.on();
+
             sessionLed.off();
+
             break;
+        }
+
 
         case MeasurementState::RUNNING:
+        {
             statusLed.off();
 
             sessionLed.startBlinking(
                 SESSION_LED_BLINK_INTERVAL_MS
             );
+
             break;
+        }
+
 
         case MeasurementState::PAUSED:
+        {
             statusLed.startBlinking(
                 STATUS_LED_BLINK_INTERVAL_MS
             );
@@ -139,7 +166,9 @@ void updateMeasurementLeds()
             sessionLed.startBlinking(
                 SESSION_LED_BLINK_INTERVAL_MS
             );
+
             break;
+        }
     }
 }
 
@@ -176,21 +205,33 @@ void updateErrorLed()
 
 
     switch (currentErrorState) {
+
         case ErrorState::NONE:
+        {
             errorLed.off();
+
             break;
+        }
+
 
         case ErrorState::SENSOR:
+        {
             errorLed.startBlinking(
                 ERROR_LED_BLINK_INTERVAL_MS
             );
+
             break;
+        }
+
 
         case ErrorState::NETWORK:
+        {
             errorLed.startBlinking(
                 NETWORK_ERROR_LED_BLINK_INTERVAL_MS
             );
+
             break;
+        }
     }
 }
 
@@ -206,11 +247,14 @@ void initializeSessionIfSensorsReady()
         sensorsReady = false;
 
         statusLed.off();
+
         sessionLed.off();
+
 
         Serial.println(
             "Temperature sensors not ready."
         );
+
 
         return;
     }
@@ -224,10 +268,13 @@ void initializeSessionIfSensorsReady()
 
         sessionInitialized = true;
 
+
         lastMeasurementState =
             measurementSession.getState();
 
+
         updateMeasurementLeds();
+
 
         Serial.println(
             "Temperature sensors ready."
@@ -259,12 +306,87 @@ void updateSensorInitialization()
     }
 
 
-    lastSensorCheckMs = now;
+    lastSensorCheckMs =
+        now;
 
 
     temperatureSensor.refresh();
 
+
     initializeSessionIfSensorsReady();
+}
+
+
+void updateServerClient()
+{
+    if (!networkManager.isConnected()) {
+        return;
+    }
+
+
+    if (!serverClientStarted) {
+        Serial.println(
+            "ServerClient: checking stored server configuration..."
+        );
+
+
+        const ServerConfiguration configuration =
+            serverConfigurationStore.load();
+
+
+        Serial.print(
+            "ServerClient: host="
+        );
+
+        Serial.println(
+            configuration.host
+        );
+
+
+        Serial.print(
+            "ServerClient: port="
+        );
+
+        Serial.println(
+            configuration.port
+        );
+
+
+        Serial.print(
+            "ServerClient: path="
+        );
+
+        Serial.println(
+            configuration.path
+        );
+
+
+        if (configuration.isValid()) {
+            Serial.println(
+                "ServerClient: configuration valid."
+            );
+
+
+            serverClient.begin(
+                configuration
+            );
+
+
+            serverClientStarted = true;
+        }
+        else {
+            Serial.println(
+                "ServerClient: no valid server configuration."
+            );
+
+
+            // Prevent flooding the serial output.
+            delay(1000);
+        }
+    }
+
+
+    serverClient.update();
 }
 
 
@@ -272,7 +394,8 @@ void setup()
 {
     Serial.begin(
         SERIAL_BAUD_RATE
-    );    
+    );
+
 
     const unsigned long serialWaitStart =
         millis();
@@ -285,39 +408,68 @@ void setup()
         delay(10);
     }
 
-    mbed::bd_addr_t startAddress = 0;
-mbed::bd_size_t size = 0;
 
-const int result =
-    kv_get_default_flash_addresses(
-        &startAddress,
-        &size
+    mbed::bd_addr_t startAddress = 0;
+
+    mbed::bd_size_t size = 0;
+
+
+    const int result =
+        kv_get_default_flash_addresses(
+            &startAddress,
+            &size
+        );
+
+
+    Serial.print(
+        "KV flash result: "
     );
 
-Serial.print("KV flash result: ");
-Serial.println(result);
+    Serial.println(
+        result
+    );
 
-Serial.print("KV start address: 0x");
-Serial.println(
-    static_cast<unsigned long>(startAddress),
-    HEX
-);
 
-Serial.print("KV size: ");
-Serial.println(
-    static_cast<unsigned long>(size)
-);
+    Serial.print(
+        "KV start address: 0x"
+    );
+
+    Serial.println(
+        static_cast<unsigned long>(
+            startAddress
+        ),
+        HEX
+    );
+
+
+    Serial.print(
+        "KV size: "
+    );
+
+    Serial.println(
+        static_cast<unsigned long>(
+            size
+        )
+    );
 
 
     Serial.println();
 
-    Serial.print(DEVICE_ID);
-    Serial.println(" starting...");
-    
+
+    Serial.print(
+        DEVICE_ID
+    );
+
+    Serial.println(
+        " starting..."
+    );
+
 
     // LEDs
     statusLed.begin();
+
     sessionLed.begin();
+
     errorLed.begin();
 
 
@@ -327,31 +479,38 @@ Serial.println(
     );
 
     sessionLed.off();
+
     errorLed.off();
 
 
     // Persistent flash storage
     flashStorage.begin();
+
+
+    // Device identity
     deviceIdentity.begin();
 
 
-    // WiFi
+    // Persistent configuration stores
     wifiCredentialStore.begin();
 
-     // Sensors
-    pressureSensor.begin();
-
     temperatureSensorStore.begin();
+
     serverConfigurationStore.begin();
 
-    temperatureSensor.begin();
-    
-    //flashStorage.clearAll();
 
+    // Sensors
+    pressureSensor.begin();
+
+    temperatureSensor.begin();
+
+
+    // Debug persistent configuration
     flashStorage.debugPrintAll();
 
 
-    WifiCredentials storedCredentials =
+    // WiFi
+    const WifiCredentials storedCredentials =
         wifiCredentialStore.load();
 
 
@@ -364,6 +523,7 @@ Serial.println(
             storedCredentials.ssid
         );
 
+
         networkManager.begin(
             storedCredentials
         );
@@ -373,6 +533,7 @@ Serial.println(
             "No valid WiFi credentials stored."
         );
 
+
         wifiSetupPortal.begin();
     }
 
@@ -381,17 +542,18 @@ Serial.println(
     measurementButton.begin();
 
 
-   
-
-
     // Session initialization is intentionally
     // performed later in loop().
+    //
     // This allows the initialization LED
     // to become visible.
+    Serial.print(
+        DEVICE_ID
+    );
 
-
-    Serial.print(DEVICE_ID);
-    Serial.println(" setup complete.");
+    Serial.println(
+        " setup complete."
+    );
 }
 
 
@@ -409,6 +571,8 @@ void loop()
     discoveryService.update();
 
     bootstrapServer.update();
+
+    updateServerClient();
 
 
     // Temperature sensor
@@ -435,7 +599,9 @@ void loop()
 
     // LEDs
     statusLed.update();
+
     sessionLed.update();
+
     errorLed.update();
 
 
@@ -457,6 +623,7 @@ void loop()
             lastMeasurementState
         ) {
             updateMeasurementLeds();
+
 
             lastMeasurementState =
                 currentState;
