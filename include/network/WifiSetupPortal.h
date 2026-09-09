@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <WiFiNINA.h>
 
-#include "network/WifiCredentialStore.h"
+#include "storage/WifiCredentialStore.h"
 
 class WifiSetupPortal
 {

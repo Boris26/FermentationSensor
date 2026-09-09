@@ -5,7 +5,7 @@
 #include <OneWire.h>
 
 #include "sensors/TemperatureSensorId.h"
-#include "sensors/TemperatureSensorStore.h"
+#include "storage/TemperatureSensorStore.h"
 
 class TemperatureSensor
 {

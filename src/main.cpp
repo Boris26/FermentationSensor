@@ -5,7 +5,6 @@
 #include "input/MeasurementButton.h"
 
 #include "network/NetworkManager.h"
-#include "network/WifiCredentialStore.h"
 #include "network/WifiCredentials.h"
 #include "network/WifiSetupPortal.h"
 
@@ -14,14 +13,28 @@
 
 #include "sensors/PressureSensor.h"
 #include "sensors/TemperatureSensor.h"
-#include "sensors/TemperatureSensorStore.h"
 
 #include "session/MeasurementSession.h"
+
+#include "storage/FlashStorage.h"
+#include "storage/TemperatureSensorStore.h"
+#include "storage/WifiCredentialStore.h"
+#include "device/DeviceIdentity.h"
+
+
+FlashStorage flashStorage;
 
 
 NetworkManager networkManager;
 
-WifiCredentialStore wifiCredentialStore;
+DeviceIdentity deviceIdentity(
+    flashStorage
+);
+
+
+WifiCredentialStore wifiCredentialStore(
+    flashStorage
+);
 
 WifiSetupPortal wifiSetupPortal(
     wifiCredentialStore
@@ -30,7 +43,10 @@ WifiSetupPortal wifiSetupPortal(
 
 PressureSensor pressureSensor;
 
-TemperatureSensorStore temperatureSensorStore;
+
+TemperatureSensorStore temperatureSensorStore(
+    flashStorage
+);
 
 TemperatureSensor temperatureSensor(
     ONE_WIRE_PIN,
@@ -276,6 +292,11 @@ void setup()
     errorLed.off();
 
 
+    // Persistent flash storage
+    flashStorage.begin();
+    deviceIdentity.begin();
+
+
     // WiFi
     wifiCredentialStore.begin();
 
@@ -353,10 +374,10 @@ void loop()
     // Update error state.
     //
     // Sensor error:
-    // normal blinking
+    // fast blinking
     //
     // WiFi unavailable:
-    // fast blinking
+    // slower blinking
     //
     // Everything OK:
     // LED off

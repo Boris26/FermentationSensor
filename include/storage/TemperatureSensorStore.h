@@ -1,10 +1,15 @@
 #pragma once
 
 #include "sensors/TemperatureSensorId.h"
+#include "storage/FlashStorage.h"
 
 class TemperatureSensorStore
 {
 public:
+    explicit TemperatureSensorStore(
+        FlashStorage& storage
+    );
+
     bool begin();
 
     bool hasAmbientSensor() const;
@@ -21,8 +26,13 @@ public:
         const TemperatureSensorId& sensorId
     );
 
+    bool clearAmbientSensor();
+    bool clearBeerSensor();
+
 private:
-    bool hasSensor(const char* key) const;
+    bool hasSensor(
+        const char* key
+    ) const;
 
     TemperatureSensorId loadSensor(
         const char* key
@@ -32,6 +42,8 @@ private:
         const char* key,
         const TemperatureSensorId& sensorId
     );
+
+    FlashStorage& _storage;
 
     bool _initialized = false;
 };
