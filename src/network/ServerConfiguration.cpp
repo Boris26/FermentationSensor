@@ -26,13 +26,7 @@ bool ServerConfigurationStore::begin()
 
 bool ServerConfigurationStore::hasConfiguration() const
 {
-    if (!_initialized) {
-        return false;
-    }
-
-    return _storage.exists(
-        STORAGE_KEY
-    );
+    return load().isValid();
 }
 
 
@@ -48,6 +42,11 @@ ServerConfiguration ServerConfigurationStore::load() const
     StoredServerConfiguration stored = {};
 
 
+    if (!_storage.exists(STORAGE_KEY)) {
+        return configuration;
+    }
+
+
     if (
         !_storage.getBytes(
             STORAGE_KEY,
@@ -55,6 +54,22 @@ ServerConfiguration ServerConfigurationStore::load() const
             sizeof(stored)
         )
     ) {
+        Serial.println(
+            "ServerConfigurationStore: failed to load configuration."
+        );
+
+        return configuration;
+    }
+
+
+    if (
+        stored.host[MAX_HOST_LENGTH] != '\0' ||
+        stored.path[MAX_PATH_LENGTH] != '\0'
+    ) {
+        Serial.println(
+            "ServerConfigurationStore: stored configuration is invalid."
+        );
+
         return configuration;
     }
 
@@ -70,6 +85,10 @@ ServerConfiguration ServerConfigurationStore::load() const
 
 
     if (!configuration.isValid()) {
+        Serial.println(
+            "ServerConfigurationStore: stored configuration is incomplete."
+        );
+
         return ServerConfiguration{};
     }
 
@@ -82,10 +101,27 @@ bool ServerConfigurationStore::save(
     const ServerConfiguration& configuration
 )
 {
+    if (!_initialized) {
+        return false;
+    }
+
+
+    if (!configuration.isValid()) {
+        Serial.println(
+            "ServerConfigurationStore: invalid configuration."
+        );
+
+        return false;
+    }
+
     if (
-        !_initialized ||
-        !configuration.isValid()
+        configuration.host.length() > MAX_HOST_LENGTH ||
+        configuration.path.length() > MAX_PATH_LENGTH
     ) {
+        Serial.println(
+            "ServerConfigurationStore: host or path is too long."
+        );
+
         return false;
     }
 

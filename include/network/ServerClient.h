@@ -25,7 +25,9 @@ public:
 
     bool isRegistered() const;
 
-      void sendTemperatureMeasurement(
+    void onNetworkDisconnected();
+
+    void sendTemperatureMeasurement(
         float beerTemperature,
         float ambientTemperature
     );
@@ -38,11 +40,21 @@ private:
 
     void sendRegistration();
 
+    bool sendTextMessage(
+        const String& message,
+        const char* description
+    );
+
     void handleIncomingMessages();
 
     void handleMessage(
         const String& message
     );
+
+    bool parseMessageType(
+        const String& message,
+        String& type
+    ) const;
 
 
     DeviceIdentity& _deviceIdentity;
@@ -64,7 +76,21 @@ private:
 
     unsigned long _lastConnectionAttemptMs = 0;
 
+    unsigned long _registrationSentMs = 0;
+
+    unsigned long _reconnectIntervalMs =
+        INITIAL_RECONNECT_INTERVAL_MS;
+
 
     static constexpr unsigned long
-        RECONNECT_INTERVAL_MS = 5000;
+        INITIAL_RECONNECT_INTERVAL_MS = 5000;
+
+    static constexpr unsigned long
+        MAX_RECONNECT_INTERVAL_MS = 60000;
+
+    static constexpr unsigned long
+        REGISTRATION_TIMEOUT_MS = 7500;
+
+    static constexpr size_t
+        MAX_WEBSOCKET_MESSAGE_SIZE = WS_TX_BUFFER_SIZE;
 };

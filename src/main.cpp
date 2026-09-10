@@ -289,10 +289,9 @@ void initializeSessionIfSensorsReady()
 
 void updateSensorInitialization()
 {
-    if (sessionInitialized) {
+    if (temperatureSensor.isConversionInProgress()) {
         return;
     }
-
 
     const unsigned long now =
         millis();
@@ -320,6 +319,8 @@ void updateSensorInitialization()
 void updateServerClient()
 {
     if (!networkManager.isConnected()) {
+        serverClient.onNetworkDisconnected();
+
         return;
     }
 
@@ -544,6 +545,7 @@ void loop()
     if (
         newTemperatureMeasurement &&
         sessionInitialized &&
+        sensorsReady &&
         measurementSession.isRunning() &&
         serverClient.isRegistered()
     ) {

@@ -23,11 +23,14 @@ public:
     bool clear();
 
 private:
+    static constexpr size_t MAX_HOST_LENGTH = 63;
+    static constexpr size_t MAX_PATH_LENGTH = 95;
+
     struct StoredServerConfiguration
     {
-        char host[64];
-        uint16_t port;
-        char path[96];
+        char host[MAX_HOST_LENGTH + 1] = {};
+        uint16_t port = 0;
+        char path[MAX_PATH_LENGTH + 1] = {};
     };
 
     static constexpr const char* STORAGE_KEY =

@@ -21,6 +21,8 @@ private:
         WiFiClient& client
     );
 
+    void resetClient();
+
     bool parseConfiguration(
         const String& body,
         ServerConfiguration& configuration
@@ -50,5 +52,20 @@ private:
 
     WiFiServer _server{80};
 
+    WiFiClient _client;
+
+    String _requestLine;
+    String _headerLine;
+    String _body;
+
+    int _contentLength = 0;
+
+    unsigned long _clientStartedMs = 0;
+
     bool _started = false;
+    bool _clientActive = false;
+    bool _readingBody = false;
+
+    static constexpr size_t READ_BUDGET_BYTES = 128;
+    static constexpr unsigned long CLIENT_TIMEOUT_MS = 2000;
 };

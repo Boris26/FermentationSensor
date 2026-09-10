@@ -16,6 +16,7 @@ TemperatureSensor::TemperatureSensor(
 void TemperatureSensor::begin()
 {
     _sensors.begin();
+    _sensors.setWaitForConversion(false);
 
     const int sensorCount =
         _sensors.getDeviceCount();
@@ -194,28 +195,45 @@ bool TemperatureSensor::update()
     const unsigned long now =
         millis();
 
+    if (!_conversionInProgress) {
+        if (
+            now - _lastMeasurementMs <
+            TEMPERATURE_INTERVAL_MS
+        ) {
+            return false;
+        }
+
+        _lastMeasurementMs = now;
+        _conversionStartedMs = now;
+        _conversionTimeMs = getConversionTimeMs();
+        _conversionInProgress = true;
+
+        _sensors.requestTemperatures();
+
+        return false;
+    }
 
     if (
-        now - _lastMeasurementMs <
-        TEMPERATURE_INTERVAL_MS
+        now - _conversionStartedMs <
+        _conversionTimeMs
     ) {
         return false;
     }
 
-
-    _lastMeasurementMs =
-        now;
-
-
-    _sensors.requestTemperatures();
+    _conversionInProgress = false;
 
 
     const int sensorCount =
         _sensors.getDeviceCount();
 
 
-    bool measurementReceived =
+    bool ambientMeasurementReceived =
         false;
+
+    bool beerMeasurementReceived =
+        false;
+
+    _measurementAttempted = true;
 
 
     for (int i = 0; i < sensorCount; ++i) {
@@ -232,10 +250,18 @@ bool TemperatureSensor::update()
 
 
         if (isAmbientSensor(address)) {
+            if (temperature == DEVICE_DISCONNECTED_C) {
+                Serial.println(
+                    "Ambient temperature sensor returned an invalid value."
+                );
+
+                continue;
+            }
+
             _ambientTemperature =
                 temperature;
 
-            measurementReceived =
+            ambientMeasurementReceived =
                 true;
 
 
@@ -252,10 +278,18 @@ bool TemperatureSensor::update()
             );
         }
         else if (isBeerSensor(address)) {
+            if (temperature == DEVICE_DISCONNECTED_C) {
+                Serial.println(
+                    "Beer temperature sensor returned an invalid value."
+                );
+
+                continue;
+            }
+
             _beerTemperature =
                 temperature;
 
-            measurementReceived =
+            beerMeasurementReceived =
                 true;
 
 
@@ -295,14 +329,67 @@ bool TemperatureSensor::update()
     }
 
 
-    return measurementReceived;
+    _lastMeasurementValid =
+        ambientMeasurementReceived &&
+        beerMeasurementReceived;
+
+    return _lastMeasurementValid;
+}
+
+
+unsigned long TemperatureSensor::getConversionTimeMs()
+{
+    uint8_t highestResolution = 9;
+
+    const int sensorCount =
+        _sensors.getDeviceCount();
+
+    for (int index = 0; index < sensorCount; ++index) {
+        DeviceAddress address;
+
+        if (!_sensors.getAddress(address, index)) {
+            continue;
+        }
+
+        const uint8_t resolution =
+            _sensors.getResolution(address);
+
+        if (resolution > highestResolution) {
+            highestResolution = resolution;
+        }
+    }
+
+    switch (highestResolution) {
+        case 9:
+            return 94;
+
+        case 10:
+            return 188;
+
+        case 11:
+            return 375;
+
+        default:
+            return 750;
+    }
 }
 
 bool TemperatureSensor::areAllSensorsConnected()
 {
+    if (
+        _measurementAttempted &&
+        !_lastMeasurementValid
+    ) {
+        return false;
+    }
+
     // Solange noch kein Ambient-Sensor konfiguriert
     // wurde, ist die Sensorkonfiguration nicht vollständig.
     if (!_ambientSensorId.isValid()) {
+        return false;
+    }
+
+    if (!_beerSensorId.isValid()) {
         return false;
     }
 
@@ -310,12 +397,7 @@ bool TemperatureSensor::areAllSensorsConnected()
         return false;
     }
 
-    // Sobald ein Beer-Sensor gelernt wurde,
-    // erwarten wir auch diesen Sensor.
-    if (
-        _beerSensorId.isValid() &&
-        !isSensorConnected(_beerSensorId)
-    ) {
+    if (!isSensorConnected(_beerSensorId)) {
         return false;
     }
 
@@ -410,7 +492,17 @@ bool TemperatureSensor::isSensorConnected(
 
 void TemperatureSensor::refresh()
 {
+    if (_conversionInProgress) {
+        return;
+    }
+
     _sensors.begin();
+}
+
+
+bool TemperatureSensor::isConversionInProgress() const
+{
+    return _conversionInProgress;
 }
 
 float TemperatureSensor::getBeerTemperature() const
