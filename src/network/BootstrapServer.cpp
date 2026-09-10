@@ -44,26 +44,40 @@ void BootstrapServer::update()
 
 
     if (WiFi.status() != WL_CONNECTED) {
+        resetClient();
         _started = false;
         return;
     }
 
+    if (!_clientActive) {
+        _client = _server.available();
 
-    WiFiClient client =
-        _server.available();
+        if (!_client) {
+            return;
+        }
 
+        _clientActive = true;
+        _clientStartedMs = millis();
+    }
 
-    if (!client) {
+    if (!_client.connected()) {
+        resetClient();
         return;
     }
 
+    if (
+        millis() - _clientStartedMs >=
+        CLIENT_TIMEOUT_MS
+    ) {
+        Serial.println(
+            "BootstrapServer: request timed out."
+        );
 
-    handleClient(
-        client
-    );
+        resetClient();
+        return;
+    }
 
-
-    client.stop();
+    handleClient(_client);
 }
 
 
@@ -71,121 +85,115 @@ void BootstrapServer::handleClient(
     WiFiClient& client
 )
 {
-    String requestLine =
-        client.readStringUntil('\n');
-
-    requestLine.trim();
-
-
-    if (
-        requestLine !=
-        "POST /connect HTTP/1.1"
-    ) {
-        sendResponse(
-            client,
-            404,
-            "Not Found",
-            "{\"error\":\"endpoint not found\"}"
-        );
-
-        return;
-    }
-
-
-    int contentLength = 0;
-
-
-    while (client.connected()) {
-        String line =
-            client.readStringUntil('\n');
-
-        line.trim();
-
-
-        if (line.isEmpty()) {
-            break;
-        }
-
-
-        if (
-            line.startsWith(
-                "Content-Length:"
-            )
-        ) {
-            String value =
-                line.substring(
-                    strlen("Content-Length:")
-                );
-
-            value.trim();
-
-            contentLength =
-                value.toInt();
-        }
-    }
-
-
-    if (
-        contentLength <= 0 ||
-        contentLength > 512
-    ) {
-        sendResponse(
-            client,
-            400,
-            "Bad Request",
-            "{\"error\":\"invalid content length\"}"
-        );
-
-        return;
-    }
-
-
-    String body;
-
-    body.reserve(
-        contentLength
-    );
-
-
-    const unsigned long start =
-        millis();
-
+    size_t bytesRead = 0;
 
     while (
-        body.length() <
-            static_cast<unsigned int>(
-                contentLength
-            ) &&
-        millis() - start < 2000
+        client.available() &&
+        bytesRead < READ_BUDGET_BYTES
     ) {
-        while (
-            client.available() &&
-            body.length() <
-                static_cast<unsigned int>(
-                    contentLength
+        const char character =
+            static_cast<char>(client.read());
+
+        ++bytesRead;
+
+        if (!_readingBody) {
+            if (character == '\r') {
+                continue;
+            }
+
+            if (character != '\n') {
+                _headerLine += character;
+
+                if (_headerLine.length() > 512) {
+                    sendResponse(
+                        client,
+                        400,
+                        "Bad Request",
+                        "{\"error\":\"request header too long\"}"
+                    );
+
+                    resetClient();
+                    return;
+                }
+
+                continue;
+            }
+
+            if (_requestLine.isEmpty()) {
+                _requestLine = _headerLine;
+                _headerLine = "";
+                continue;
+            }
+
+            if (_headerLine.isEmpty()) {
+                if (
+                    _requestLine !=
+                    "POST /connect HTTP/1.1"
+                ) {
+                    sendResponse(
+                        client,
+                        404,
+                        "Not Found",
+                        "{\"error\":\"endpoint not found\"}"
+                    );
+
+                    resetClient();
+                    return;
+                }
+
+                if (
+                    _contentLength <= 0 ||
+                    _contentLength > 512
+                ) {
+                    sendResponse(
+                        client,
+                        400,
+                        "Bad Request",
+                        "{\"error\":\"invalid content length\"}"
+                    );
+
+                    resetClient();
+                    return;
+                }
+
+                _body.reserve(_contentLength);
+                _readingBody = true;
+                continue;
+            }
+
+            if (
+                _headerLine.startsWith(
+                    "Content-Length:"
                 )
+            ) {
+                String value =
+                    _headerLine.substring(
+                        strlen("Content-Length:")
+                    );
+
+                value.trim();
+                _contentLength = value.toInt();
+            }
+
+            _headerLine = "";
+            continue;
+        }
+
+        _body += character;
+
+        if (
+            _body.length() ==
+            static_cast<unsigned int>(_contentLength)
         ) {
-            body +=
-                static_cast<char>(
-                    client.read()
-                );
+            break;
         }
     }
 
-
     if (
-        body.length() !=
-        static_cast<unsigned int>(
-            contentLength
-        )
+        !_readingBody ||
+        _body.length() !=
+            static_cast<unsigned int>(_contentLength)
     ) {
-        sendResponse(
-            client,
-            400,
-            "Bad Request",
-            "{\"error\":\"incomplete request body\"}"
-        );
-
         return;
     }
 
@@ -195,7 +203,7 @@ void BootstrapServer::handleClient(
 
     if (
         !parseConfiguration(
-            body,
+            _body,
             configuration
         )
     ) {
@@ -206,6 +214,7 @@ void BootstrapServer::handleClient(
             "{\"error\":\"invalid configuration\"}"
         );
 
+        resetClient();
         return;
     }
 
@@ -222,6 +231,7 @@ void BootstrapServer::handleClient(
             "{\"error\":\"configuration could not be saved\"}"
         );
 
+        resetClient();
         return;
     }
 
@@ -253,6 +263,22 @@ void BootstrapServer::handleClient(
         "OK",
         "{\"status\":\"configured\"}"
     );
+
+    resetClient();
+}
+
+
+void BootstrapServer::resetClient()
+{
+    _client.stop();
+    _client = WiFiClient();
+    _requestLine = "";
+    _headerLine = "";
+    _body = "";
+    _contentLength = 0;
+    _clientStartedMs = 0;
+    _clientActive = false;
+    _readingBody = false;
 }
 
 

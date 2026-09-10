@@ -19,12 +19,15 @@ public:
     bool update();
 
     void refresh();
+    bool isConversionInProgress() const;
     bool areAllSensorsConnected();
 
     float getBeerTemperature() const;
     float getAmbientTemperature() const;
 
 private:
+    unsigned long getConversionTimeMs();
+
     void printSensorAddress(
         const DeviceAddress& address
     );
@@ -61,5 +64,11 @@ private:
     float _beerTemperature =
         DEVICE_DISCONNECTED_C;
 
+    bool _measurementAttempted = false;
+    bool _lastMeasurementValid = false;
+    bool _conversionInProgress = false;
+
     unsigned long _lastMeasurementMs = 0;
+    unsigned long _conversionStartedMs = 0;
+    unsigned long _conversionTimeMs = 0;
 };

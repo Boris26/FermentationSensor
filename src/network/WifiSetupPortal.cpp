@@ -36,13 +36,34 @@ void WifiSetupPortal::update()
         return;
     }
 
-    WiFiClient client = _server.available();
+    if (!_clientActive) {
+        _client = _server.available();
 
-    if (!client) {
+        if (!_client) {
+            return;
+        }
+
+        _clientActive = true;
+        _clientStartedMs = millis();
+
+        Serial.println("WifiSetupPortal: client connected.");
+    }
+
+    if (!_client.connected()) {
+        resetClient();
         return;
     }
 
-    handleClient(client);
+    if (
+        millis() - _clientStartedMs >=
+        CLIENT_TIMEOUT_MS
+    ) {
+        Serial.println("WifiSetupPortal: request timed out.");
+        resetClient();
+        return;
+    }
+
+    handleClient(_client);
 }
 
 bool WifiSetupPortal::isActive() const
@@ -52,35 +73,45 @@ bool WifiSetupPortal::isActive() const
 
 void WifiSetupPortal::handleClient(WiFiClient& client)
 {
-    Serial.println("WifiSetupPortal: client connected.");
-
-    const unsigned long timeoutStart = millis();
+    size_t bytesRead = 0;
 
     while (
-        client.connected() &&
-        millis() - timeoutStart < 1000
+        client.available() &&
+        bytesRead < READ_BUDGET_BYTES
     ) {
-        if (!client.available()) {
+        const char character =
+            static_cast<char>(client.read());
+
+        ++bytesRead;
+
+        if (character == '\r') {
             continue;
         }
 
-        const String requestLine =
-            client.readStringUntil('\r');
+        if (character != '\n') {
+            _requestLine += character;
 
-        Serial.print("WifiSetupPortal: request: ");
-        Serial.println(requestLine);
+            if (_requestLine.length() > 512) {
+                Serial.println(
+                    "WifiSetupPortal: request line too long."
+                );
 
-        // Restliche HTTP-Header verwerfen
-        while (client.available()) {
-            client.read();
+                resetClient();
+                return;
+            }
+
+            continue;
         }
 
-        if (requestLine.startsWith("GET /?")) {
+        Serial.print("WifiSetupPortal: request: ");
+        Serial.println(_requestLine);
+
+        if (_requestLine.startsWith("GET /?")) {
             const String ssid =
-                getQueryParameter(requestLine, "ssid");
+                getQueryParameter(_requestLine, "ssid");
 
             const String password =
-                getQueryParameter(requestLine, "password");
+                getQueryParameter(_requestLine, "password");
 
             WifiCredentials credentials;
             credentials.ssid = urlDecode(ssid);
@@ -109,11 +140,19 @@ void WifiSetupPortal::handleClient(WiFiClient& client)
             sendSetupPage(client);
         }
 
-        break;
+        resetClient();
+        return;
     }
+}
 
-    delay(1);
-    client.stop();
+
+void WifiSetupPortal::resetClient()
+{
+    _client.stop();
+    _client = WiFiClient();
+    _requestLine = "";
+    _clientStartedMs = 0;
+    _clientActive = false;
 
     Serial.println("WifiSetupPortal: client disconnected.");
 }

@@ -17,6 +17,7 @@ public:
 
 private:
     void handleClient(WiFiClient& client);
+    void resetClient();
     void sendSetupPage(WiFiClient& client);
     void sendSuccessPage(WiFiClient& client);
 
@@ -28,7 +29,15 @@ private:
     String urlDecode(const String& value);
 
     WiFiServer _server;
+    WiFiClient _client;
     WifiCredentialStore& _credentialStore;
 
     bool _active = false;
+    bool _clientActive = false;
+
+    String _requestLine;
+    unsigned long _clientStartedMs = 0;
+
+    static constexpr size_t READ_BUDGET_BYTES = 128;
+    static constexpr unsigned long CLIENT_TIMEOUT_MS = 1000;
 };

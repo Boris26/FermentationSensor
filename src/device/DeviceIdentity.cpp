@@ -36,7 +36,12 @@ bool DeviceIdentity::begin()
             );
 
 
-        if (!saveConfiguration()) {
+        if (
+            !saveConfiguration(
+                _deviceId,
+                _deviceName
+            )
+        ) {
             Serial.println(
                 "DeviceIdentity: failed to save configuration."
             );
@@ -116,7 +121,7 @@ bool DeviceIdentity::setDeviceName(
     trimmedName.trim();
 
 
-    if (trimmedName.isEmpty()) {
+    if (!isValidDeviceName(trimmedName)) {
         Serial.println(
             "DeviceIdentity: invalid device name."
         );
@@ -125,17 +130,22 @@ bool DeviceIdentity::setDeviceName(
     }
 
 
-    _deviceName =
-        trimmedName;
-
-
-    if (!saveConfiguration()) {
+    if (
+        !saveConfiguration(
+            _deviceId,
+            trimmedName
+        )
+    ) {
         Serial.println(
             "DeviceIdentity: failed to save device name."
         );
 
         return false;
     }
+
+
+    _deviceName =
+        trimmedName;
 
 
     Serial.print(
@@ -156,6 +166,11 @@ bool DeviceIdentity::loadConfiguration()
     StoredDeviceConfiguration stored = {};
 
 
+    if (!_storage.exists(DEVICE_CONFIG_KEY)) {
+        return false;
+    }
+
+
     if (
         !_storage.getBytes(
             DEVICE_CONFIG_KEY,
@@ -163,14 +178,24 @@ bool DeviceIdentity::loadConfiguration()
             sizeof(stored)
         )
     ) {
+        Serial.println(
+            "DeviceIdentity: failed to load stored configuration."
+        );
+
         return false;
     }
 
 
     if (
         stored.deviceId[0] == '\0' ||
-        stored.deviceName[0] == '\0'
+        stored.deviceId[
+            sizeof(stored.deviceId) - 1
+        ] != '\0'
     ) {
+        Serial.println(
+            "DeviceIdentity: stored device ID is invalid."
+        );
+
         return false;
     }
 
@@ -178,20 +203,169 @@ bool DeviceIdentity::loadConfiguration()
     _deviceId =
         String(stored.deviceId);
 
-    _deviceName =
-        String(stored.deviceName);
+    if (!isValidDeviceId(_deviceId)) {
+        Serial.println(
+            "DeviceIdentity: stored device ID has an invalid format."
+        );
+
+        return false;
+    }
+
+    if (
+        stored.deviceName[
+            sizeof(stored.deviceName) - 1
+        ] == '\0' &&
+        isValidDeviceName(
+            String(stored.deviceName)
+        )
+    ) {
+        _deviceName =
+            String(stored.deviceName);
+    }
+    else {
+        Serial.println(
+            "DeviceIdentity: stored device name is invalid; using default."
+        );
+
+        _deviceName =
+            generateDefaultName(
+                _deviceId
+            );
+
+        if (
+            !saveConfiguration(
+                _deviceId,
+                _deviceName
+            )
+        ) {
+            return false;
+        }
+    }
 
 
     return true;
 }
 
 
-bool DeviceIdentity::saveConfiguration()
+bool DeviceIdentity::isValidDeviceId(
+    const String& deviceId
+) const
+{
+    if (deviceId.length() != DEVICE_ID_LENGTH) {
+        return false;
+    }
+
+    for (size_t index = 0; index < DEVICE_ID_LENGTH; ++index) {
+        const char character =
+            deviceId[index];
+
+        const bool separator =
+            index == 8 ||
+            index == 13 ||
+            index == 18 ||
+            index == 23;
+
+        if (separator) {
+            if (character != '-') {
+                return false;
+            }
+
+            continue;
+        }
+
+        const bool hexadecimal =
+            (
+                character >= '0' &&
+                character <= '9'
+            ) ||
+            (
+                character >= 'a' &&
+                character <= 'f'
+            ) ||
+            (
+                character >= 'A' &&
+                character <= 'F'
+            );
+
+        if (!hexadecimal) {
+            return false;
+        }
+    }
+
+    return
+        deviceId[14] == '4' &&
+        (
+            deviceId[19] == '8' ||
+            deviceId[19] == '9' ||
+            deviceId[19] == 'a' ||
+            deviceId[19] == 'A' ||
+            deviceId[19] == 'b' ||
+            deviceId[19] == 'B'
+        );
+}
+
+
+bool DeviceIdentity::isValidDeviceName(
+    const String& name
+) const
 {
     if (
-        _deviceId.isEmpty() ||
-        _deviceName.isEmpty()
+        name.isEmpty() ||
+        name.length() > MAX_DEVICE_NAME_LENGTH
     ) {
+        return false;
+    }
+
+    for (size_t index = 0; index < name.length(); ++index) {
+        const char character =
+            name[index];
+
+        const bool isLetter =
+            (
+                character >= 'A' &&
+                character <= 'Z'
+            ) ||
+            (
+                character >= 'a' &&
+                character <= 'z'
+            );
+
+        const bool isNumber =
+            character >= '0' &&
+            character <= '9';
+
+        const bool allowed =
+            isLetter ||
+            isNumber ||
+            character == ' ' ||
+            character == '-' ||
+            character == '_' ||
+            character == '.' ||
+            character == '(' ||
+            character == ')';
+
+        if (!allowed) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+bool DeviceIdentity::saveConfiguration(
+    const String& deviceId,
+    const String& deviceName
+)
+{
+    if (
+        !isValidDeviceId(deviceId) ||
+        !isValidDeviceName(deviceName)
+    ) {
+        Serial.println(
+            "DeviceIdentity: refusing to save invalid configuration."
+        );
+
         return false;
     }
 
@@ -199,13 +373,13 @@ bool DeviceIdentity::saveConfiguration()
     StoredDeviceConfiguration stored = {};
 
 
-    _deviceId.toCharArray(
+    deviceId.toCharArray(
         stored.deviceId,
         sizeof(stored.deviceId)
     );
 
 
-    _deviceName.toCharArray(
+    deviceName.toCharArray(
         stored.deviceName,
         sizeof(stored.deviceName)
     );

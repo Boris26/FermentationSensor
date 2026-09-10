@@ -410,18 +410,13 @@ void FlashStorage::debugPrintAll()
         "device_name"
     );
 
-    printString(
-        "wifi_ssid"
-    );
-
-
     Serial.print(
-        "wifi_password: "
+        "wifi_config: "
     );
 
     Serial.println(
         exists(
-            "wifi_password"
+            "wifi_config"
         )
             ? "<stored>"
             : "<not set>"
