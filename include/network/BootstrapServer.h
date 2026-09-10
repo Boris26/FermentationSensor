@@ -14,6 +14,8 @@ public:
 
     void update();
 
+    bool consumeConfigurationChanged();
+
 private:
     void begin();
 
@@ -26,18 +28,6 @@ private:
     bool parseConfiguration(
         const String& body,
         ServerConfiguration& configuration
-    );
-
-    bool readJsonString(
-        const String& json,
-        const char* key,
-        String& value
-    );
-
-    bool readJsonNumber(
-        const String& json,
-        const char* key,
-        uint16_t& value
     );
 
     void sendResponse(
@@ -65,6 +55,7 @@ private:
     bool _started = false;
     bool _clientActive = false;
     bool _readingBody = false;
+    bool _configurationChanged = false;
 
     static constexpr size_t READ_BUDGET_BYTES = 128;
     static constexpr unsigned long CLIENT_TIMEOUT_MS = 2000;

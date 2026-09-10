@@ -12,7 +12,6 @@ public:
 
     void begin();
     void update();
-
     bool isActive() const;
 
 private:
@@ -20,13 +19,14 @@ private:
     void resetClient();
     void sendSetupPage(WiFiClient& client);
     void sendSuccessPage(WiFiClient& client);
+    void sendBadRequest(WiFiClient& client);
 
-    String getQueryParameter(
-        const String& request,
-        const String& name
-    );
-
-    String urlDecode(const String& value);
+    bool getFormParameter(
+        const String& body,
+        const String& name,
+        String& value
+    ) const;
+    bool urlDecode(const String& value, String& decoded) const;
 
     WiFiServer _server;
     WiFiClient _client;
@@ -34,8 +34,13 @@ private:
 
     bool _active = false;
     bool _clientActive = false;
+    bool _readingBody = false;
+    bool _formContentType = false;
 
     String _requestLine;
+    String _headerLine;
+    String _body;
+    int _contentLength = 0;
     unsigned long _clientStartedMs = 0;
 
     static constexpr size_t READ_BUDGET_BYTES = 128;

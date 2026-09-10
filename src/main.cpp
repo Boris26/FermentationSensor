@@ -119,7 +119,8 @@ enum class ErrorState
 {
     NONE,
     SENSOR,
-    NETWORK
+    NETWORK,
+    BACKEND
 };
 
 
@@ -188,6 +189,13 @@ void updateErrorLed()
         currentErrorState =
             ErrorState::NETWORK;
     }
+    else if (
+        !serverClient.isConnected() ||
+        !serverClient.isRegistered()
+    ) {
+        currentErrorState =
+            ErrorState::BACKEND;
+    }
 
 
     // Do not restart the blink timer
@@ -228,6 +236,16 @@ void updateErrorLed()
         {
             errorLed.startBlinking(
                 NETWORK_ERROR_LED_BLINK_INTERVAL_MS
+            );
+
+            break;
+        }
+
+
+        case ErrorState::BACKEND:
+        {
+            errorLed.startBlinking(
+                BACKEND_ERROR_LED_BLINK_INTERVAL_MS
             );
 
             break;
@@ -325,7 +343,15 @@ void updateServerClient()
     }
 
 
-    if (!serverClientStarted) {
+    const bool configurationChanged =
+        bootstrapServer
+            .consumeConfigurationChanged();
+
+
+    if (
+        !serverClientStarted ||
+        configurationChanged
+    ) {
         const ServerConfiguration configuration =
             serverConfigurationStore.load();
 
@@ -563,6 +589,9 @@ void loop()
     //
     // WiFi unavailable:
     // slower blinking
+    //
+    // Backend unavailable or not registered:
+    // slowest blinking
     //
     // Everything OK:
     // LED off

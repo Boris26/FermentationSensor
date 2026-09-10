@@ -159,7 +159,7 @@ void DiscoveryService::sendDiscoveryResponse(
     ] = {};
 
 
-    snprintf(
+    const int written = snprintf(
         response,
         sizeof(response),
         "{"
@@ -174,6 +174,13 @@ void DiscoveryService::sendDiscoveryResponse(
             .getDeviceName()
             .c_str()
     );
+
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(response)) {
+        Serial.println(
+            "DiscoveryService: response formatting failed or was truncated."
+        );
+        return;
+    }
 
 
     if (
