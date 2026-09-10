@@ -45,3 +45,6 @@ constexpr unsigned long ERROR_LED_BLINK_INTERVAL_MS = 100;
 
 // WiFi / network unavailable
 constexpr unsigned long NETWORK_ERROR_LED_BLINK_INTERVAL_MS = 500;
+
+// WiFi is available, but the backend connection/registration is not.
+constexpr unsigned long BACKEND_ERROR_LED_BLINK_INTERVAL_MS = 1500;

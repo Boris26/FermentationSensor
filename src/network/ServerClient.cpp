@@ -22,6 +22,12 @@ void ServerClient::begin(
     }
 
 
+    if (_configured) {
+        disconnect();
+        delete _webSocketClient;
+        _webSocketClient = nullptr;
+    }
+
     _configuration =
         configuration;
 
@@ -30,6 +36,8 @@ void ServerClient::begin(
     _connected = false;
 
     _registered = false;
+
+    _reconnectIntervalMs = INITIAL_RECONNECT_INTERVAL_MS;
 
 
     Serial.print(

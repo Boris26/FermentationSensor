@@ -81,6 +81,14 @@ void BootstrapServer::update()
 }
 
 
+bool BootstrapServer::consumeConfigurationChanged()
+{
+    const bool changed = _configurationChanged;
+    _configurationChanged = false;
+    return changed;
+}
+
+
 void BootstrapServer::handleClient(
     WiFiClient& client
 )
@@ -236,6 +244,9 @@ void BootstrapServer::handleClient(
     }
 
 
+    _configurationChanged = true;
+
+
     Serial.print(
         "BootstrapServer: backend configured: "
     );
@@ -287,210 +298,188 @@ bool BootstrapServer::parseConfiguration(
     ServerConfiguration& configuration
 )
 {
+    size_t position = 0;
+    bool hasHost = false;
+    bool hasPort = false;
+    bool hasPath = false;
+
+    const auto skipWhitespace = [&]() {
+        while (
+            position < body.length() &&
+            isspace(static_cast<unsigned char>(body[position]))
+        ) {
+            ++position;
+        }
+    };
+
+    const auto readString = [&](String& value) {
+        if (
+            position >= body.length() ||
+            body[position++] != '"'
+        ) {
+            return false;
+        }
+
+        value = "";
+
+        while (position < body.length()) {
+            const char character = body[position++];
+
+            if (character == '"') {
+                return true;
+            }
+
+            if (
+                character == '\\' ||
+                static_cast<uint8_t>(character) < 0x20
+            ) {
+                return false;
+            }
+
+            value += character;
+        }
+
+        return false;
+    };
+
+    skipWhitespace();
+
     if (
-        !readJsonString(
-            body,
-            "host",
-            configuration.host
-        )
+        position >= body.length() ||
+        body[position++] != '{'
     ) {
         return false;
     }
 
+    while (true) {
+        skipWhitespace();
 
-    if (
-        !readJsonNumber(
-            body,
-            "port",
-            configuration.port
-        )
-    ) {
+        if (
+            position < body.length() &&
+            body[position] == '}'
+        ) {
+            ++position;
+            break;
+        }
+
+        String key;
+
+        if (!readString(key)) {
+            return false;
+        }
+
+        skipWhitespace();
+
+        if (
+            position >= body.length() ||
+            body[position++] != ':'
+        ) {
+            return false;
+        }
+
+        skipWhitespace();
+
+        if (key == "host" || key == "path") {
+            String value;
+
+            if (!readString(value)) {
+                return false;
+            }
+
+            if (key == "host") {
+                if (hasHost) {
+                    return false;
+                }
+
+                configuration.host = value;
+                hasHost = true;
+            }
+            else {
+                if (hasPath) {
+                    return false;
+                }
+
+                configuration.path = value;
+                hasPath = true;
+            }
+        }
+        else if (key == "port") {
+            if (
+                hasPort ||
+                position >= body.length() ||
+                !isDigit(body[position])
+            ) {
+                return false;
+            }
+
+            uint32_t port = 0;
+
+            while (
+                position < body.length() &&
+                isDigit(body[position])
+            ) {
+                port =
+                    port * 10 +
+                    (body[position++] - '0');
+
+                if (port > 65535) {
+                    return false;
+                }
+            }
+
+            if (port == 0) {
+                return false;
+            }
+
+            configuration.port =
+                static_cast<uint16_t>(port);
+            hasPort = true;
+        }
+        else {
+            return false;
+        }
+
+        skipWhitespace();
+
+        if (
+            position < body.length() &&
+            body[position] == ','
+        ) {
+            ++position;
+            skipWhitespace();
+
+            if (
+                position >= body.length() ||
+                body[position] == '}'
+            ) {
+                return false;
+            }
+
+            continue;
+        }
+
+        if (
+            position < body.length() &&
+            body[position] == '}'
+        ) {
+            ++position;
+            break;
+        }
+
         return false;
     }
 
-
-    if (
-        !readJsonString(
-            body,
-            "path",
-            configuration.path
-        )
-    ) {
-        return false;
-    }
-
-
+    skipWhitespace();
     configuration.host.trim();
     configuration.path.trim();
 
-
-    if (
-        !configuration.path.startsWith("/")
-    ) {
-        return false;
-    }
-
-
-    return configuration.isValid();
-}
-
-
-bool BootstrapServer::readJsonString(
-    const String& json,
-    const char* key,
-    String& value
-)
-{
-    const String search =
-        String("\"") +
-        key +
-        "\"";
-
-
-    int position =
-        json.indexOf(search);
-
-
-    if (position < 0) {
-        return false;
-    }
-
-
-    position =
-        json.indexOf(
-            ':',
-            position +
-                search.length()
-        );
-
-
-    if (position < 0) {
-        return false;
-    }
-
-
-    const int startQuote =
-        json.indexOf(
-            '"',
-            position + 1
-        );
-
-
-    if (startQuote < 0) {
-        return false;
-    }
-
-
-    const int endQuote =
-        json.indexOf(
-            '"',
-            startQuote + 1
-        );
-
-
-    if (endQuote < 0) {
-        return false;
-    }
-
-
-    value =
-        json.substring(
-            startQuote + 1,
-            endQuote
-        );
-
-
-    return true;
-}
-
-
-bool BootstrapServer::readJsonNumber(
-    const String& json,
-    const char* key,
-    uint16_t& value
-)
-{
-    const String search =
-        String("\"") +
-        key +
-        "\"";
-
-
-    int position =
-        json.indexOf(search);
-
-
-    if (position < 0) {
-        return false;
-    }
-
-
-    position =
-        json.indexOf(
-            ':',
-            position +
-                search.length()
-        );
-
-
-    if (position < 0) {
-        return false;
-    }
-
-
-    int start =
-        position + 1;
-
-
-    while (
-        start < json.length() &&
-        (
-            json[start] == ' ' ||
-            json[start] == '\t'
-        )
-    ) {
-        ++start;
-    }
-
-
-    int end = start;
-
-
-    while (
-        end < json.length() &&
-        isDigit(json[end])
-    ) {
-        ++end;
-    }
-
-
-    if (end == start) {
-        return false;
-    }
-
-
-    const long parsedValue =
-        json.substring(
-            start,
-            end
-        ).toInt();
-
-
-    if (
-        parsedValue <= 0 ||
-        parsedValue > 65535
-    ) {
-        return false;
-    }
-
-
-    value =
-        static_cast<uint16_t>(
-            parsedValue
-        );
-
-
-    return true;
+    return
+        position == body.length() &&
+        hasHost &&
+        hasPort &&
+        hasPath &&
+        configuration.isValid() &&
+        configuration.path.startsWith("/");
 }
 
 
