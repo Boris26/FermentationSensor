@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "config/Config.h"
+#include "network/MeasurementSequenceAllocator.h"
 #include "sensors/BubbleActivityAggregator.h"
 
 static_assert(
@@ -53,7 +54,7 @@ class MeasurementOutbox
 public:
     explicit MeasurementOutbox(
         unsigned long acknowledgementTimeoutMs,
-        uint32_t firstSequence = 1
+        MeasurementSequenceSource& sequenceSource
     );
 
     bool enqueueTemperature(
@@ -91,7 +92,7 @@ private:
     void dropOldest();
 
     const unsigned long _acknowledgementTimeoutMs;
-    uint32_t _nextSequence;
+    MeasurementSequenceSource& _sequenceSource;
     OutboxEntry _entries[MEASUREMENT_OUTBOX_CAPACITY];
     size_t _head = 0;
     size_t _count = 0;

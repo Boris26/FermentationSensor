@@ -7,10 +7,10 @@ uint32_t OutboxEntry::ageSeconds(uint32_t nowMs) const
 
 MeasurementOutbox::MeasurementOutbox(
     unsigned long acknowledgementTimeoutMs,
-    uint32_t firstSequence
+    MeasurementSequenceSource& sequenceSource
 )
     : _acknowledgementTimeoutMs(acknowledgementTimeoutMs),
-      _nextSequence(firstSequence)
+      _sequenceSource(sequenceSource)
 {
 }
 
@@ -53,11 +53,14 @@ bool MeasurementOutbox::enqueueBubbleActivity(
 
 bool MeasurementOutbox::enqueue(const OutboxEntry& source)
 {
+    uint32_t sequence = 0;
+    if (!_sequenceSource.next(sequence)) return false;
+
     if (full()) dropOldest();
 
     const size_t tail = (_head + _count) % capacity();
     _entries[tail] = source;
-    _entries[tail].sequence = _nextSequence++;
+    _entries[tail].sequence = sequence;
     ++_count;
     if (_count == 1) {
         _headHasBeenSent = false;

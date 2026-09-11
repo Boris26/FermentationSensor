@@ -73,7 +73,16 @@ Beim ersten Start wird eine UUID v4 erzeugt, mit Hardwaredaten des NINA-W102 ang
 
 - WLAN-SSID und -Passwort,
 - der Last-Known-Gateway-Cache,
-- die Zuordnung der DS18B20-ROM-IDs zu Bier- und Umgebungssensor.
+- die Zuordnung der DS18B20-ROM-IDs zu Bier- und Umgebungssensor,
+- der Start des nächsten freien Measurement-Sequence-Blocks.
+
+### Persistente Measurement-Sequenzen
+
+Die stabile `deviceId` wird mit logisch einmaligen Measurement-Sequenzen kombiniert. Dazu reserviert der Sensor Sequenzblöcke mit **65.536** Werten über den versionierten KV-Key `measurement_sequence_v1`. Bevor auch nur die erste Sequenz eines Blocks verwendet wird, schreibt die Firmware bereits den Start des darauffolgenden Blocks in den Flash (**reserve before use**). Im Normalbetrieb entsteht daher ein Flash-Write pro 65.536 Messungen und nicht pro Messung.
+
+Die erste Initialisierung beginnt absichtlich bei `0x01000000` (16.777.216). Dieser deutlich höhere Migrationsbereich verhindert auf bereits eingesetzten Geräten eine Kollision mit niedrigen Sequenzen, die von der früheren flüchtigen Zählung schon an BeerDataStore übertragen worden sein können. Bei jedem Neustart wird der nächste Block reserviert. Nicht verwendete Werte des vorherigen Blocks werden dabei bewusst übersprungen; das ist unschädlich und garantiert, dass eine möglicherweise schon verwendete Sequenz nicht erneut vergeben wird. Auch ein Stromausfall unmittelbar nach einer erfolgreichen Reservierung kann daher höchstens einen unbenutzten Block überspringen.
+
+Die Outbox selbst bleibt ausschließlich im RAM. Ein Neustart verliert somit weiterhin unbestätigte Messwerte, deren kompletter reservierter Sequence-Bereich wird danach aber nicht wiederverwendet. Schlägt die Flash-Reservierung fehl oder ist der gespeicherte Zustand ungültig, arbeitet die Vergabe geschlossen: Es gelangt keine Messung mit einer unsicheren Sequenz in die Outbox, und `MEASUREMENT_SEQUENCE_RESERVATION_FAILED` wird seriell gemeldet. Eine Erschöpfung des sicheren `uint32_t`-Raums führt ebenfalls nicht zu Wrap-around oder Recycling, sondern stoppt weitere Vergaben.
 
 ## WLAN-Provisioning
 
@@ -93,13 +102,13 @@ Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidenti
 
 ## Generic Measurement Outbox
 
-Übertragungswürdige Temperaturmessungen und abgeschlossene Bubble-Activity-Fenster laufen in zeitlicher Reihenfolge durch denselben statisch reservierten Ringbuffer. Beide Typen teilen einen monotonen `uint32_t`-Sequenzzähler; natürlicher Wrap-around ist erlaubt. Die Queue enthält strukturierte Payloads und keine vorbereiteten JSON-Strings. Rohdruckreihen, einzelne BubbleEvents, Baseline, Noise, Trigger-, Kalibrierungs- und Diagnosedaten sowie Registrierungsmeldungen werden nicht gepuffert.
+Übertragungswürdige Temperaturmessungen und abgeschlossene Bubble-Activity-Fenster laufen in zeitlicher Reihenfolge durch denselben statisch reservierten Ringbuffer. Beide Typen teilen den persistent abgesicherten `uint32_t`-Sequenzraum; ein Wrap-around ist ausdrücklich nicht erlaubt. Die Queue enthält strukturierte Payloads und keine vorbereiteten JSON-Strings. Rohdruckreihen, einzelne BubbleEvents, Baseline, Noise, Trigger-, Kalibrierungs- und Diagnosedaten sowie Registrierungsmeldungen werden nicht gepuffert.
 
 Die Kapazität beträgt 384 Einträge. Ein `OutboxEntry` belegt auf der Zielplattform 28 Byte, die Einträge reservieren somit 10.752 Byte (10,5 KiB) RAM zuzüglich weniger Verwaltungsbytes. Bei überwiegend einem Bubble-Fenster pro Minute reichen 360 Plätze grob für sechs Stunden; zusätzliche Temperaturereignisse reduzieren die effektive Offline-Dauer. Das ist ausdrücklich keine feste Sechs-Stunden-Garantie.
 
 Ausschließlich der älteste Eintrag wird gesendet und bleibt bis zum passenden `MEASUREMENT_ACK` in-flight. Bei jedem Sende- und Retry-Versuch entstehen `measurementAgeSeconds` beziehungsweise `windowEndAgeSeconds` neu aus der vorzeichenlosen Differenz `millis() - capturedAtMs`; dadurch funktionieren die Altersangaben auch über einen `millis()`-Wrap und benötigen weder RTC noch erfundene UTC-Zeitstempel. Bereits gepufferte Daten werden auch in `PAUSED` weiter gesendet und bestätigt, obwohl dort keine neue Druckmessung oder Bubble-Aggregation stattfindet.
 
-Ist der Ringbuffer voll, gilt **DROP OLDEST**: Der älteste Eintrag wird verworfen, ein eventueller In-flight-Zustand zurückgesetzt, der neue Eintrag angehängt und der zentrale Drop-Zähler erhöht. Ein verspätetes ACK des verworfenen Eintrags entfernt keine weiteren Daten. Diese Strategie bedeutet bei langen Ausfällen bewussten Datenverlust zugunsten aktuellerer Messungen. Die Outbox liegt ausschließlich im RAM; ein Neustart verliert alle noch nicht bestätigten Einträge.
+Ist der Ringbuffer voll, gilt **DROP OLDEST**: Der älteste Eintrag wird verworfen, ein eventueller In-flight-Zustand zurückgesetzt, der neue Eintrag angehängt und der zentrale Drop-Zähler erhöht. Seine Sequenz bleibt dauerhaft verbraucht. Ein verspätetes ACK des verworfenen Eintrags entfernt keine weiteren Daten. Diese Strategie bedeutet bei langen Ausfällen bewussten Datenverlust zugunsten aktuellerer Messungen. Die Outbox liegt ausschließlich im RAM; ein Neustart verliert alle noch nicht bestätigten Einträge.
 
 ### Druckkalibrierung und technische Blubb-Erkennung
 

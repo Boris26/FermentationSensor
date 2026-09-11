@@ -40,6 +40,11 @@ constexpr unsigned long BUBBLE_REFRACTORY_MS = 500;
 constexpr unsigned long BUBBLE_ACTIVITY_WINDOW_MS = 60000;
 constexpr size_t MEASUREMENT_OUTBOX_CAPACITY = 384;
 constexpr unsigned long MEASUREMENT_ACK_TIMEOUT_MS = 5000;
+constexpr uint32_t MEASUREMENT_SEQUENCE_BLOCK_SIZE = 65536U;
+// Migration away from legacy, reboot-local sequences: deployed devices used
+// low values, so the first persistent allocation starts in a safely separated
+// range rather than risking reuse of an already accepted sequence.
+constexpr uint32_t MEASUREMENT_SEQUENCE_INITIAL_START = 0x01000000U;
 constexpr float PRESSURE_BASELINE_TRACKING_ALPHA = 0.001f;
 
 
