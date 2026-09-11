@@ -76,7 +76,7 @@ Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidenti
 
 **Offline measurement buffering is not implemented.** Es gibt weder RAM-/Ring-/Flash-Queue noch Replay gespeicherter Messwerte nach einem Reconnect.
 
-### Druckdiagnose
+### Druckkalibrierung und technische Blubb-Erkennung
 
 Der DFRobot LWLP5000 / SEN0343 misst den Differenzdruck zwischen Gärbehälter und Umgebung in Pascal. Während einer laufenden `RUNNING`-Session liest die Firmware den Sensor nicht blockierend alle 100 ms (etwa 10 Messwerte pro Sekunde) und gibt bei aktiviertem `PRESSURE_DIAGNOSTICS_ENABLED` eine maschinenlesbare Zeile aus:
 
@@ -86,7 +86,18 @@ PRESSURE,<millis>,<pressurePa>
 
 Der Zeitstempel basiert auf `millis()`, der Druckwert besitzt zwei Nachkommastellen. Mit `PRESSURE_DIAGNOSTICS_ENABLED = false` wird nur diese serielle Rohdatenausgabe abgeschaltet; die interne Druckmessung und der optionale `pressurePa`-Snapshot einer tatsächlich gesendeten `TEMPERATURE_MEASUREMENT` bleiben erhalten. Die 10-Hz-Rohwerte erzeugen keine zusätzlichen Gateway-Nachrichten. In `IDLE` und `PAUSED` findet weiterhin keine laufende Druckmessreihe statt.
 
-Die Druckwerte werden aktuell **nicht** als Blubbs interpretiert. Eine spätere Bubble Detection wird anhand real aufgezeichneter Druckkurven entwickelt.
+Beim ersten Wechsel nach `RUNNING` seit einem Neustart kalibriert sich die Druckauswertung fünf Minuten lang. Während dieser Phase werden keine Blubbs gezählt. Je 50 Rohwerte (etwa fünf Sekunden) werden zu einem Block zusammengefasst. Der Median von höchstens 60 Blockmittelwerten bildet die robuste Baseline; der Median der Standardabweichungen innerhalb der Blöcke beschreibt das typische Rauschen. Damit beeinflussen einzelne Ausreißer höchstens einen Block und nicht unmittelbar das Ergebnis. Statt rund 3000 Rohwerten reserviert die Implementierung zwei feste Arrays mit je 64 `float`-Werten (zusammen 512 Byte) als begrenzten Kalibrierungs-Arbeitsspeicher. Nach Abschluss werden deren temporäre Inhalte gelöscht und nicht mehr ausgewertet; als gültige Daten bleiben nur Baseline, Rauschen, Trigger-/Release-Schwelle, Zustandsdaten, Zähler und das letzte Event. Eine Kalibrierung wird nicht im Flash gespeichert.
+
+Der dynamische Trigger ist `max(0,50 Pa, noisePa * 5,0)`, die Release-Schwelle beträgt `triggerDeltaPa * 0,4`. Außerhalb aktiver Blubbs und der Sperrzeit folgt die Baseline langfristigem Drift mit `alpha = 0,001`. Ein positiver Peak startet ein Event am Trigger und beendet es beim Release. Ereignisse unter 100 ms werden verworfen; Ereignisse über 3000 ms werden abgebrochen. Anschließend verhindert eine Sperrzeit von 500 ms eine Mehrfachzählung durch Nachschwingen. Bei Pause wird ein halbfertiges Ereignis verworfen. Eine vorhandene Kalibrierung bleibt bei Resume erhalten; auch eine pausierte Kalibrierung wird mit ihrer verbleibenden aktiven Laufzeit fortgesetzt.
+
+Die genannten Werte sind zentral in `Config.h` konfigurierte **Startwerte**, die nach Messungen realer Druckkurven angepasst werden können, ohne die Erkennungslogik zu ändern. Bei aktivierter Druckdiagnose erscheinen zusätzlich genau einmal pro Kalibrierung und einmal pro gültigem technischen Ereignis:
+
+```text
+PRESSURE_CALIBRATED,baseline=0.01,noise=0.08,trigger=0.50,release=0.20
+BUBBLE,<startMs>,<durationMs>,<peakDeltaPa>
+```
+
+Diese Bubble Detection erkennt ausschließlich technische Druckereignisse. Sie bewertet weder Gäraktivität noch Gärfortschritt. BubbleEvents und hochfrequente Druckdaten werden derzeit nicht an Gateway oder Backend gesendet; `pressurePa` bleibt lediglich der optionale Snapshot einer tatsächlich gesendeten Temperaturmessung.
 
 ## LEDs
 
@@ -114,4 +125,4 @@ Abhängigkeiten: WiFiNINA, ArduinoHttpClient, OneWire und DallasTemperature. DNS
 
 ## Bewusste fachliche Grenzen
 
-Nicht implementiert sind Offline Queue/Replay, Bubble-Auswertung, Plato-, Alkohol- oder Vergärungsberechnung sowie eine Bewertung des Gärverlaufs. Der Sensor kennt weder `beerId` noch ein Datenbankmodell oder einen fachlichen Gärstatus.
+Nicht implementiert sind Offline Queue/Replay, fachliche Bubble-Auswertung, Plato-, Alkohol- oder Vergärungsberechnung sowie eine Bewertung des Gärverlaufs. Der Sensor kennt weder `beerId` noch ein Datenbankmodell oder einen fachlichen Gärstatus.
