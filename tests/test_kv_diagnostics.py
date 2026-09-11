@@ -26,13 +26,18 @@ class KvDiagnosticsTests(unittest.TestCase):
             "measurement_sequence_v1",
         ):
             self.assertIn(f'"{key}"', FLASH)
-        self.assertIn("FLASH_STORAGE_MIGRATION_SUCCESS", FLASH)
-        self.assertIn("writeLayoutMarker()", FLASH)
+
+        migrate = FLASH.split("bool FlashStorage::migrateLegacyStore()", 1)[1].split(
+            "bool FlashStorage::migrateLegacyKey", 1
+        )[0]
+        self.assertIn("FLASH_STORAGE_MIGRATION_SUCCESS", migrate)
+        self.assertIn("writeLayoutMarker()", migrate)
         self.assertIn("FLASH_STORAGE_LEGACY_CLEANUP_OK", FLASH)
-        self.assertLess(
-            FLASH.index("writeLayoutMarker()"),
-            FLASH.index("cleanupLegacyStore();"),
-        )
+
+        begin = FLASH.split("bool FlashStorage::begin()", 1)[1].split(
+            "bool FlashStorage::setString", 1
+        )[0]
+        self.assertLess(begin.index("migrateLegacyStore()"), begin.index("cleanupLegacyStore()"))
 
     def test_boot_diagnostic_iterates_application_store_without_reading_values(self):
         diagnostic = FLASH[FLASH.index("void FlashStorage::debugPrintEntries()") :]
