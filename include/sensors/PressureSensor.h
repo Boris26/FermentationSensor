@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sensors/PressureBubbleDetector.h"
+#include "sensors/BubbleActivityAggregator.h"
 
 class PressureSensor
 {
@@ -19,4 +20,6 @@ private:
     bool _available = false;
     float _pressurePa = 0.0f;
     PressureBubbleDetector _bubbleDetector;
+    BubbleActivityAggregator _bubbleActivityAggregator;
+    uint32_t _diagnosedWindowRevision = 0;
 };
