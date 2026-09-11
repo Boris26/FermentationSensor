@@ -181,3 +181,19 @@ float PressureSensor::getPressurePa() const
 {
     return _pressurePa;
 }
+
+bool PressureSensor::hasCompletedBubbleActivityWindow() const
+{
+    return _bubbleActivityAggregator.hasCompletedWindow();
+}
+
+const BubbleActivityWindow&
+PressureSensor::completedBubbleActivityWindow() const
+{
+    return _bubbleActivityAggregator.completedWindow();
+}
+
+void PressureSensor::acknowledgeCompletedBubbleActivityWindow()
+{
+    _bubbleActivityAggregator.acknowledgeCompletedWindow();
+}

@@ -130,11 +130,14 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
         self.assertIn("_bubbleActivityAggregator.update(now);", PRESSURE)
         self.assertIn("_bubbleActivityAggregator.recordBubble();", PRESSURE)
         self.assertIn('Serial.print("BUBBLE_WINDOW,");', PRESSURE)
-        diagnostics = PRESSURE[PRESSURE.index('Serial.print("BUBBLE_WINDOW,");'):]
+        diagnostics = PRESSURE[
+            PRESSURE.index('Serial.print("BUBBLE_WINDOW,");'):
+            PRESSURE.index("void PressureSensor::onSessionRunning()")
+        ]
         self.assertNotIn("acknowledgeCompletedWindow", diagnostics)
 
-    def test_gateway_protocol_is_unchanged(self):
-        self.assertNotIn("BUBBLE_ACTIVITY", CLIENT)
+    def test_gateway_does_not_send_individual_windows_from_aggregator(self):
+        self.assertIn("BUBBLE_ACTIVITY", CLIENT)
         self.assertNotIn("BUBBLE_WINDOW", CLIENT)
 
     def test_aggregator_uses_no_dynamic_queue(self):

@@ -38,6 +38,14 @@ public:
         float pressurePa
     );
 
+    bool sendBubbleActivity(
+        uint32_t sequence,
+        uint16_t bubbleCount,
+        uint32_t windowSeconds
+    );
+
+    bool takeBubbleActivityAcknowledgement(uint32_t& sequence);
+
 
 private:
     void connect();
@@ -62,6 +70,11 @@ private:
         String& type
     ) const;
 
+    bool parseBubbleActivityAcknowledgement(
+        const String& message,
+        uint32_t& sequence
+    ) const;
+
 
     DeviceIdentity& _deviceIdentity;
 
@@ -78,6 +91,8 @@ private:
     bool _connected = false;
 
     bool _registered = false;
+    bool _hasBubbleActivityAcknowledgement = false;
+    uint32_t _bubbleActivityAcknowledgementSequence = 0;
 
     uint8_t _failedConnectionCycles = 0;
 

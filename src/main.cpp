@@ -9,6 +9,7 @@
 #include "input/MeasurementButton.h"
 
 #include "network/GatewayDiscovery.h"
+#include "network/BubbleActivityTransmission.h"
 #include "network/NetworkManager.h"
 #include "network/ServerClient.h"
 #include "network/TemperatureTransmissionPolicy.h"
@@ -61,6 +62,10 @@ ServerClient serverClient(
 
 TemperatureTransmissionPolicy temperatureTransmissionPolicy(
     TEMPERATURE_SEND_DELTA_C
+);
+
+BubbleActivityTransmission bubbleActivityTransmission(
+    BUBBLE_ACTIVITY_ACK_TIMEOUT_MS
 );
 
 
@@ -439,6 +444,70 @@ void updateServerClient()
     }
 }
 
+void updateBubbleActivityTransmission()
+{
+    uint32_t acknowledgedSequence = 0;
+    if (serverClient.takeBubbleActivityAcknowledgement(
+        acknowledgedSequence
+    )) {
+        if (bubbleActivityTransmission.acknowledge(
+            acknowledgedSequence
+        )) {
+            Serial.print("BUBBLE_ACTIVITY_ACK,");
+            Serial.println(acknowledgedSequence);
+        } else {
+            Serial.print("BUBBLE_ACTIVITY_ACK_IGNORED,");
+            Serial.println(acknowledgedSequence);
+        }
+    }
+
+    if (
+        !bubbleActivityTransmission.hasPending() &&
+        pressureSensor.hasCompletedBubbleActivityWindow()
+    ) {
+        if (bubbleActivityTransmission.accept(
+            pressureSensor.completedBubbleActivityWindow()
+        )) {
+            // The transport slot now owns a copy; the aggregator may release
+            // its latest-wins result independently of the gateway ACK.
+            pressureSensor.acknowledgeCompletedBubbleActivityWindow();
+        }
+    }
+
+    const bool connected = serverClient.isConnected();
+    const bool registered = serverClient.isRegistered();
+    if (!connected || !registered) {
+        bubbleActivityTransmission.onTransportUnavailable();
+        return;
+    }
+
+    const unsigned long now = millis();
+    if (!bubbleActivityTransmission.shouldSend(
+        connected,
+        registered,
+        now
+    )) return;
+
+    const PendingBubbleActivity& pending =
+        bubbleActivityTransmission.pending();
+    const bool retry = bubbleActivityTransmission.isRetry();
+    if (serverClient.sendBubbleActivity(
+        pending.sequence,
+        pending.bubbleCount,
+        pending.windowSeconds
+    )) {
+        bubbleActivityTransmission.recordSuccessfulSend(now);
+        Serial.print(retry
+            ? "BUBBLE_ACTIVITY_RETRY,"
+            : "BUBBLE_ACTIVITY_SENT,");
+        Serial.print(pending.sequence);
+        Serial.print(',');
+        Serial.print(pending.bubbleCount);
+        Serial.print(',');
+        Serial.println(pending.windowSeconds);
+    }
+}
+
 
 void setup()
 {
@@ -728,4 +797,6 @@ void loop()
     ) {
         pressureSensor.update();
     }
+
+    updateBubbleActivityTransmission();
 }
