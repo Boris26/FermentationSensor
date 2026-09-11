@@ -50,6 +50,20 @@ Der `ServerClient` verwendet weiterhin `ArduinoHttpClient`/`WebSocketClient` und
 
 Messdaten dürfen erst nach `{"type":"REGISTER_SENSOR_ACK"}` gesendet werden. Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff bleiben aktiv.
 
+Abgeschlossene technische Aktivitätsfenster werden unabhängig von der Temperatur-Sendeschwelle als eigener Nachrichtentyp übertragen. Das gilt ausdrücklich auch für Fenster mit null erkannten Blubbs:
+
+```json
+{"type":"BUBBLE_ACTIVITY","deviceId":"...","sequence":1,"bubbleCount":8,"windowSeconds":60}
+```
+
+Das Gateway bestätigt eine akzeptierte Nachricht mit:
+
+```json
+{"type":"BUBBLE_ACTIVITY_ACK","sequence":1}
+```
+
+Erst dieses ACK mit exakt passender `sequence` bestätigt die Übertragung; ein erfolgreicher lokaler WebSocket-Write genügt nicht. Bleibt das ACK länger als fünf Sekunden aus, wird dieselbe Nachricht ohne blockierendes Warten und mit derselben Sequenznummer erneut gesendet. Auch nach einem WebSocket-Abbruch bleibt der Pending-Datensatz erhalten und wird nach Reconnect sowie erneutem `REGISTER_SENSOR_ACK` mit derselben `sequence` wiederholt. Falsche oder veraltete ACK-Sequenzen werden ignoriert.
+
 ## Geräteidentität und persistente Daten
 
 Beim ersten Start wird eine UUID v4 erzeugt, mit Hardwaredaten des NINA-W102 angereichert und zusammen mit einem editierbaren `deviceName` persistent gespeichert. Eine gültige UUID bleibt dauerhaft erhalten. Zusätzlich werden gespeichert:
@@ -74,7 +88,7 @@ Die beiden Temperaturen werden weiterhin ungefähr alle 60 Sekunden frisch gemes
 
 Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidentität wurden geprüft: WLAN-Reconnect, Cache-first Gateway-Auswahl, DNS-SD-Fallback, Speichern entdeckter Endpunkte, WebSocket-Backoff, Rediscovery und Registrierung pro Verbindung sind vorhanden. `deviceId` und `deviceName` liegen persistent im Flash; eine neue UUID entsteht nur bei fehlender oder ungültiger Konfiguration.
 
-**Offline measurement buffering is not implemented.** Es gibt weder RAM-/Ring-/Flash-Queue noch Replay gespeicherter Messwerte nach einem Reconnect.
+**Ein vollständiges Offline Measurement Buffering ist nicht implementiert.** Für Bubble Activity existiert genau ein fester Pending-Transport-Slot, der eine Kopie bis zum Gateway-ACK beziehungsweise über einen Reconnect hinweg hält. Daneben bleibt der einzelne abgeschlossene Slot des Aggregators bestehen. Ist der Transport-Slot länger belegt, können daher mehrere neu abgeschlossene, noch nicht übernommene Fenster weiterhin nach „latest wins“ durch das jeweils neueste Fenster ersetzt werden. Es gibt keine RAM-/Ring-/Flash-Queue; diese bewusste Einschränkung wird erst durch einen späteren Offline-Ringbuffer beseitigt. Temperaturmessungen werden weiterhin nicht offline gepuffert.
 
 ### Druckkalibrierung und technische Blubb-Erkennung
 
@@ -105,16 +119,16 @@ Ein Ereignis wird dem Fenster zugeordnet, in dem der Detektor es beim Release al
 BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>
 ```
 
-`BubbleActivityWindow` und Bubble Detection sind ausschließlich technische Messdaten. Es werden derzeit weder BubbleEvents noch Activity Windows an das Gateway übertragen. Der Sensor bewertet weder Gäraktivität noch Gärfortschritt.
+`BubbleActivityWindow` und Bubble Detection sind ausschließlich technische Messdaten. An das Gateway werden nur abgeschlossene Activity Windows einschließlich Null-Fenstern übertragen. Einzelne BubbleEvents, Rohdruck, Baseline, Noise, Triggerwerte und Peaks werden nicht übertragen. Der Sensor bewertet weder Gäraktivität noch Gärfortschritt.
 
 ### Architekturgrenzen der Bubble-Aktivität
 
 - **Sensor:** misst Druck, kalibriert die technische Erkennung, erkennt `BubbleEvent`s und aggregiert deren technische Aktivität.
-- **Gateway:** übernimmt später ausschließlich Transport beziehungsweise Übersetzung dieser Daten.
+- **Gateway:** bestätigt und übernimmt ausschließlich Transport beziehungsweise Übersetzung dieser Daten.
 - **BeerDataStore / Backend:** übernimmt später Speicherung und fachliche Auswertung.
 - **UI:** übernimmt später die Anzeige.
 
-Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“ oder „Gärung beendet“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Plato-Auswertung, Gateway-Übertragung der Aktivitätsfenster und Offline-Pufferung bleiben bewusst außerhalb dieser Firmware-Erweiterung.
+Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“ oder „Gärung beendet“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Plato-Auswertung, Persistenz und vollständige Offline-Pufferung bleiben bewusst außerhalb dieser Firmware-Erweiterung.
 
 ## LEDs
 

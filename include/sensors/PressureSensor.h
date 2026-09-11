@@ -15,6 +15,9 @@ public:
 
     bool isAvailable() const;
     float getPressurePa() const;
+    bool hasCompletedBubbleActivityWindow() const;
+    const BubbleActivityWindow& completedBubbleActivityWindow() const;
+    void acknowledgeCompletedBubbleActivityWindow();
 
 private:
     bool _available = false;

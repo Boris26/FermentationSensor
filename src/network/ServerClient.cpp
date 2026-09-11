@@ -515,6 +515,18 @@ void ServerClient::handleMessage(
     const String& message
 )
 {
+    uint32_t acknowledgementSequence = 0;
+
+    if (parseBubbleActivityAcknowledgement(
+        message,
+        acknowledgementSequence
+    )) {
+        _bubbleActivityAcknowledgementSequence =
+            acknowledgementSequence;
+        _hasBubbleActivityAcknowledgement = true;
+        return;
+    }
+
     String type;
 
     if (!parseMessageType(message, type)) {
@@ -546,6 +558,73 @@ void ServerClient::handleMessage(
         "ServerClient: unknown message type: "
     );
     Serial.println(type);
+}
+
+bool ServerClient::parseBubbleActivityAcknowledgement(
+    const String& message,
+    uint32_t& sequence
+) const
+{
+    size_t position = 0;
+
+    const auto skipWhitespace = [&message, &position]() {
+        while (
+            position < message.length() &&
+            (message[position] == ' ' || message[position] == '\t' ||
+             message[position] == '\r' || message[position] == '\n')
+        ) ++position;
+    };
+
+    const auto consume = [&message, &position](const char* expected) {
+        size_t offset = 0;
+        while (expected[offset] != '\0') {
+            if (
+                position >= message.length() ||
+                message[position++] != expected[offset++]
+            ) return false;
+        }
+        return true;
+    };
+
+    skipWhitespace();
+    if (!consume("{")) return false;
+    skipWhitespace();
+    if (!consume("\"type\"")) return false;
+    skipWhitespace();
+    if (!consume(":")) return false;
+    skipWhitespace();
+    if (!consume("\"BUBBLE_ACTIVITY_ACK\"")) return false;
+    skipWhitespace();
+    if (!consume(",")) return false;
+    skipWhitespace();
+    if (!consume("\"sequence\"")) return false;
+    skipWhitespace();
+    if (!consume(":")) return false;
+    skipWhitespace();
+
+    if (
+        position >= message.length() ||
+        message[position] < '0' || message[position] > '9'
+    ) return false;
+
+    uint32_t value = 0;
+    while (
+        position < message.length() &&
+        message[position] >= '0' && message[position] <= '9'
+    ) {
+        const uint8_t digit =
+            static_cast<uint8_t>(message[position++] - '0');
+        if (value > (UINT32_MAX - digit) / 10U) return false;
+        value = value * 10U + digit;
+    }
+
+    skipWhitespace();
+    if (!consume("}")) return false;
+    skipWhitespace();
+    if (position != message.length()) return false;
+
+    sequence = value;
+    return true;
 }
 
 
@@ -719,4 +798,42 @@ bool ServerClient::sendTemperatureMeasurement(
     }
 
     return false;
+}
+
+bool ServerClient::sendBubbleActivity(
+    uint32_t sequence,
+    uint16_t bubbleCount,
+    uint32_t windowSeconds
+)
+{
+    if (
+        !_connected ||
+        !_registered ||
+        _webSocketClient == nullptr
+    ) return false;
+
+    String message;
+    message.reserve(160);
+    message += "{\"type\":\"BUBBLE_ACTIVITY\",";
+    message += "\"deviceId\":\"";
+    message += _deviceIdentity.getDeviceId();
+    message += "\",\"sequence\":";
+    message += String(sequence);
+    message += ",\"bubbleCount\":";
+    message += String(bubbleCount);
+    message += ",\"windowSeconds\":";
+    message += String(windowSeconds);
+    message += "}";
+
+    return sendTextMessage(message, "bubble activity");
+}
+
+bool ServerClient::takeBubbleActivityAcknowledgement(
+    uint32_t& sequence
+)
+{
+    if (!_hasBubbleActivityAcknowledgement) return false;
+    sequence = _bubbleActivityAcknowledgementSequence;
+    _hasBubbleActivityAcknowledgement = false;
+    return true;
 }
