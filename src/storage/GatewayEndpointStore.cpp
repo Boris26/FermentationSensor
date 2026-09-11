@@ -37,6 +37,16 @@ bool GatewayEndpointStore::save(const GatewayEndpoint& endpoint)
         return false;
     }
 
+    const GatewayEndpoint existing = load();
+    if (existing.isValid() &&
+        existing.address == endpoint.address &&
+        existing.port == endpoint.port &&
+        existing.path == endpoint.path &&
+        existing.protocolVersion == endpoint.protocolVersion) {
+        Serial.println("GatewayEndpointStore: cache unchanged.");
+        return true;
+    }
+
     StoredEndpoint stored = {};
     endpoint.address.toCharArray(stored.address, sizeof(stored.address));
     stored.port = endpoint.port;
