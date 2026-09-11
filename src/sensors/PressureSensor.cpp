@@ -23,7 +23,8 @@ PressureSensor::PressureSensor()
         BUBBLE_MAX_DURATION_MS,
         BUBBLE_REFRACTORY_MS,
         PRESSURE_BASELINE_TRACKING_ALPHA
-    })
+    }),
+    _bubbleActivityAggregator(BUBBLE_ACTIVITY_WINDOW_MS)
 {
 }
 
@@ -90,6 +91,16 @@ void PressureSensor::update()
     const bool bubbleDetected =
         _bubbleDetector.processSample(now, _pressurePa);
 
+    if (!wasCalibrated && _bubbleDetector.isCalibrated()) {
+        _bubbleActivityAggregator.start(now);
+    } else {
+        // Advance the window before assigning an event recognized at `now`.
+        // Thus a boundary event belongs only to the newly started window.
+        _bubbleActivityAggregator.update(now);
+    }
+
+    if (bubbleDetected) _bubbleActivityAggregator.recordBubble();
+
     if (PRESSURE_DIAGNOSTICS_ENABLED)
     {
         Serial.print("PRESSURE,");
@@ -120,17 +131,43 @@ void PressureSensor::update()
             Serial.print(',');
             Serial.println(event.peakDeltaPa, 2);
         }
+
+        if (
+            _bubbleActivityAggregator.hasCompletedWindow() &&
+            _bubbleActivityAggregator.completedWindowRevision() !=
+                _diagnosedWindowRevision
+        )
+        {
+            const BubbleActivityWindow& window =
+                _bubbleActivityAggregator.completedWindow();
+            Serial.print("BUBBLE_WINDOW,");
+            Serial.print(window.startedAtMs);
+            Serial.print(',');
+            Serial.print(window.durationMs);
+            Serial.print(',');
+            Serial.println(window.bubbleCount);
+            _diagnosedWindowRevision =
+                _bubbleActivityAggregator.completedWindowRevision();
+        }
     }
 }
 
 void PressureSensor::onSessionRunning()
 {
-    if (_available) _bubbleDetector.onRunning(millis());
+    if (_available) {
+        const unsigned long now = millis();
+        _bubbleDetector.onRunning(now);
+        _bubbleActivityAggregator.resume(now);
+    }
 }
 
 void PressureSensor::onSessionPaused()
 {
-    if (_available) _bubbleDetector.onPaused(millis());
+    if (_available) {
+        const unsigned long now = millis();
+        _bubbleDetector.onPaused(now);
+        _bubbleActivityAggregator.pause(now);
+    }
 }
 
 

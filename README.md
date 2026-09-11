@@ -97,7 +97,24 @@ PRESSURE_CALIBRATED,baseline=0.01,noise=0.08,trigger=0.50,release=0.20
 BUBBLE,<startMs>,<durationMs>,<peakDeltaPa>
 ```
 
-Diese Bubble Detection erkennt ausschließlich technische Druckereignisse. Sie bewertet weder Gäraktivität noch Gärfortschritt. BubbleEvents und hochfrequente Druckdaten werden derzeit nicht an Gateway oder Backend gesendet; `pressurePa` bleibt lediglich der optionale Snapshot einer tatsächlich gesendeten Temperaturmessung.
+Direkt nach erfolgreicher Kalibrierung startet außerdem ein technisches Bubble-Aktivitätsfenster. Alle gültigen `BubbleEvent`s werden in festen 60-Sekunden-Fenstern gezählt. Die Fensterdauer basiert ausschließlich auf aktiver `RUNNING`-Zeit: Während `PAUSED` stehen Zeit und Zähler, bei Resume läuft dasselbe Fenster mit seiner verbleibenden aktiven Zeit weiter. Auch Fenster ohne erkanntes Ereignis werden mit `bubbleCount = 0` abgeschlossen. Direkt nach jedem Abschluss startet das nächste Fenster.
+
+Ein Ereignis wird dem Fenster zugeordnet, in dem der Detektor es beim Release als gültig abschließt. Die Fenstergrenze wird vor der Ereigniszuordnung verarbeitet; ein exakt auf der Grenze abgeschlossenes Ereignis zählt deshalb ausschließlich zum neuen Fenster. Der Sensor hält nur das laufende und einen abgeschlossenen Datensatz (`startedAtMs`, `durationMs`, `bubbleCount`). `completedWindow()` darf diesen Datensatz beliebig oft lesen, ohne ihn zu konsumieren; erst `acknowledgeCompletedWindow()` bestätigt die erfolgreiche Verarbeitung. Die serielle Diagnose liest nur und bestätigt nicht. Wird der einzelne Ergebnis-Slot vor einem weiteren Abschluss nicht bestätigt, ersetzt das neueste Ergebnis deterministisch das ältere („latest completed window wins“); es gibt weder eine wachsende Historie noch einen Offline-Puffer. Bei aktivierter Druckdiagnose wird jeder neue Abschluss einmal ausgegeben, einschließlich Null-Fenstern:
+
+```text
+BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>
+```
+
+`BubbleActivityWindow` und Bubble Detection sind ausschließlich technische Messdaten. Es werden derzeit weder BubbleEvents noch Activity Windows an das Gateway übertragen. Der Sensor bewertet weder Gäraktivität noch Gärfortschritt.
+
+### Architekturgrenzen der Bubble-Aktivität
+
+- **Sensor:** misst Druck, kalibriert die technische Erkennung, erkennt `BubbleEvent`s und aggregiert deren technische Aktivität.
+- **Gateway:** übernimmt später ausschließlich Transport beziehungsweise Übersetzung dieser Daten.
+- **BeerDataStore / Backend:** übernimmt später Speicherung und fachliche Auswertung.
+- **UI:** übernimmt später die Anzeige.
+
+Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“ oder „Gärung beendet“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Plato-Auswertung, Gateway-Übertragung der Aktivitätsfenster und Offline-Pufferung bleiben bewusst außerhalb dieser Firmware-Erweiterung.
 
 ## LEDs
 
