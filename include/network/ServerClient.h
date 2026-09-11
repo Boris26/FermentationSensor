@@ -5,7 +5,7 @@
 #include <ArduinoHttpClient.h>
 
 #include "device/DeviceIdentity.h"
-#include "network/ServerConfiguration.h"
+#include "network/GatewayEndpoint.h"
 
 
 class ServerClient
@@ -16,7 +16,7 @@ public:
     );
 
     void begin(
-        const ServerConfiguration& configuration
+        const GatewayEndpoint& endpoint
     );
 
     void update();
@@ -26,6 +26,10 @@ public:
     bool isRegistered() const;
 
     void onNetworkDisconnected();
+
+    void stop();
+
+    uint8_t failedConnectionCycles() const;
 
     void sendTemperatureMeasurement(
         float beerTemperature,
@@ -64,7 +68,7 @@ private:
     WebSocketClient* _webSocketClient =
         nullptr;
 
-    ServerConfiguration _configuration;
+    GatewayEndpoint _endpoint;
 
 
     bool _configured = false;
@@ -72,6 +76,8 @@ private:
     bool _connected = false;
 
     bool _registered = false;
+
+    uint8_t _failedConnectionCycles = 0;
 
 
     unsigned long _lastConnectionAttemptMs = 0;
