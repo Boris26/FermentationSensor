@@ -1,4 +1,3 @@
-import re
 import unittest
 from pathlib import Path
 
@@ -50,10 +49,37 @@ class StorageMaintenanceArchitectureTests(unittest.TestCase):
         self.assertIn("flashStorage.factoryReset()", factory)
         self.assertNotIn("factoryReset", maintenance)
 
-    def test_maintenance_is_only_an_explicit_startup_command(self):
-        self.assertIn('command != "COMPACT_STORAGE"', MAIN)
-        setup_prefix = MAIN.split("void setup()", 1)[1].split("deviceIdentity.begin()", 1)[0]
-        self.assertIn("runRequestedStorageMaintenance()", setup_prefix)
+    def test_no_command_or_timeout_does_not_run_maintenance(self):
+        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
+            "enum class ErrorState", 1)[0]
+        self.assertIn("while (millis() - startedAtMs < MAINTENANCE_WINDOW_MS)", offer)
+        self.assertNotIn("compactPersistentStorage()", offer.split("while (Serial.available())", 1)[0])
+
+    def test_wrong_complete_command_is_ignored(self):
+        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
+            "enum class ErrorState", 1)[0]
+        self.assertIn("strcmp(line, MAINTENANCE_COMMAND) == 0", offer)
+        self.assertIn("lineOverflow = false;", offer)
+
+    def test_compact_command_runs_maintenance_exactly_once(self):
+        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
+            "enum class ErrorState", 1)[0]
+        self.assertEqual(offer.count("storageMaintenance.compactPersistentStorage()"), 1)
+
+    def test_maintenance_is_offered_only_after_sequence_failure(self):
+        setup = MAIN.split("void setup()", 1)[1].split("void loop()", 1)[0]
+        failure = setup.split("if (!measurementSequenceReady)", 1)[1].split("}", 1)[0]
+        self.assertIn("offerStorageMaintenanceAfterSequenceFailure()", failure)
+        self.assertNotIn("offerStorageMaintenanceAfterSequenceFailure()",
+                         setup.split("if (!measurementSequenceReady)", 1)[0])
+        self.assertLess(setup.index("offerStorageMaintenanceAfterSequenceFailure()"),
+                        setup.index("wifiCredentialStore.begin()"))
+
+    def test_success_restarts_instead_of_reusing_allocator(self):
+        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
+            "enum class ErrorState", 1)[0]
+        self.assertIn("NVIC_SystemReset()", offer)
+        self.assertNotIn("measurementSequenceAllocator.begin()", offer)
 
     def test_required_diagnostics_are_present_without_secret_values(self):
         for event in ("START", "BACKUP_OK", "RESET_OK", "RESTORE_OK", "SUCCESS"):

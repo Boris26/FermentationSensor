@@ -112,10 +112,15 @@ Die Outbox selbst bleibt ausschließlich im RAM. Ein Neustart verliert somit wei
 ### Explizite Storage-Maintenance
 
 Ein durch obsolete Log-Records gefüllter TDBStore kann ausschließlich auf
-ausdrücklichen Benutzerwunsch kompakt neu aufgebaut werden. Dazu wird während
-der dreisekündigen seriellen Startphase die Zeile `COMPACT_STORAGE` gesendet.
-Sensoren, Messsession und Netzwerk sind dann noch nicht gestartet. Ein normaler
-Boot führt diese Wartung **niemals** aus.
+ausdrücklichen Benutzerwunsch kompakt neu aufgebaut werden. Nur wenn die
+persistente Sequence-Reservierung beim Boot fehlschlägt, meldet die Firmware
+`STORAGE_MAINTENANCE_AVAILABLE` und wartet bis zu 15 Sekunden auf die vollständige,
+exakte serielle Zeile `COMPACT_STORAGE`. Andere Eingaben und ein Timeout lösen
+keine Wartung aus. Sensoren, Messsession, WLAN und Gateway sind während dieses
+Fensters noch nicht gestartet. Danach bootet das Gerät fail-closed weiter: Die
+Sequence-Vergabe bleibt deaktiviert und die rote Storage-LED dauerhaft an. Ein
+normaler Boot mit erfolgreicher Sequence-Reservierung bietet oder startet die
+Wartung **niemals**.
 
 Vor `kv_reset("/kv/")` liest und validiert die Wartung `device_config`, den
 nächsten sicheren Block aus `measurement_sequence_v1` sowie alle vorhandenen
@@ -135,6 +140,10 @@ stromausfallsicher. Ein Stromverlust nach dem Reset kann Identität,
 WLAN-Konfiguration oder Sequence-State zerstören. Die Wartung darf deshalb nur
 bewusst in einem Wartungsfenster mit stabiler Versorgung ausgeführt werden. Die
 Diagnose meldet die jeweilige Phase, aber niemals UUID, SSID oder Passwort.
+Nach vollständig erfolgreicher Verifikation führt die Firmware über
+`NVIC_SystemReset()` einen kontrollierten Cortex-M-Neustart aus. Damit wird der
+zuvor fehlgeschlagene Allocator nicht im selben Objektzustand wiederverwendet;
+der folgende Boot reserviert den erhaltenen nächsten sicheren Block regulär.
 
 Die APIs bleiben bewusst getrennt: `resetRuntimeMeasurementState()` leert nur
 flüchtige Outbox-/Senderegel-Zustände, `compactPersistentStorage()` baut den

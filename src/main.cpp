@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <cstring>
 #include <kv_config.h>
 #include <kvstore_global_api.h>
 
@@ -152,15 +153,49 @@ bool factoryReset()
     return flashStorage.factoryReset();
 }
 
-bool runRequestedStorageMaintenance()
+void offerStorageMaintenanceAfterSequenceFailure()
 {
-    if (!Serial.available()) return true;
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    if (command != "COMPACT_STORAGE") return true;
+    constexpr unsigned long MAINTENANCE_WINDOW_MS = 15000;
 
-    // Measurement, networking, and sequence allocation have not started yet.
-    return storageMaintenance.compactPersistentStorage();
+    Serial.println("STORAGE_MAINTENANCE_AVAILABLE");
+    Serial.println("Send COMPACT_STORAGE within 15 seconds");
+
+    const unsigned long startedAtMs = millis();
+    constexpr char MAINTENANCE_COMMAND[] = "COMPACT_STORAGE";
+    char line[sizeof(MAINTENANCE_COMMAND)] = {};
+    size_t lineLength = 0;
+    bool lineOverflow = false;
+    while (millis() - startedAtMs < MAINTENANCE_WINDOW_MS) {
+        while (Serial.available()) {
+            const char character = static_cast<char>(Serial.read());
+            if (character == '\r') continue;
+            if (character != '\n') {
+                if (lineLength < sizeof(line) - 1) {
+                    line[lineLength++] = character;
+                    line[lineLength] = '\0';
+                } else {
+                    lineOverflow = true;
+                }
+                continue;
+            }
+
+            // Only an exact complete line triggers maintenance. Any other
+            // input is discarded while the remainder of the window stays open.
+            if (!lineOverflow && strcmp(line, MAINTENANCE_COMMAND) == 0) {
+                if (storageMaintenance.compactPersistentStorage()) {
+                    Serial.println("STORAGE_MAINTENANCE_RESTARTING");
+                    Serial.flush();
+                    delay(50);
+                    NVIC_SystemReset();
+                }
+                return;
+            }
+            lineLength = 0;
+            line[0] = '\0';
+            lineOverflow = false;
+        }
+        delay(10);
+    }
 }
 
 
@@ -704,6 +739,10 @@ void setup()
     if (!measurementSequenceReady) {
         Serial.println("MEASUREMENT_SEQUENCE_INITIALIZATION_FAILED");
         errorLed.on();
+        // No sensors, WiFi, gateway, or measurement session have started yet.
+        // Timeout, unrelated input, or maintenance failure all leave sequence
+        // allocation disabled and continue booting in fail-closed mode.
+        offerStorageMaintenanceAfterSequenceFailure();
     }
 
 
