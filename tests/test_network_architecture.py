@@ -87,6 +87,22 @@ class NetworkArchitectureTests(unittest.TestCase):
         for field in ("address", "port", "path", "protocolVersion"):
             self.assertIn("stored." + field, STORE)
 
+    def test_unchanged_cache_skips_second_persistence_write(self):
+        load = STORE.index("const GatewayEndpoint existing = load();")
+        unchanged = STORE.index("GatewayEndpointStore: cache unchanged.", load)
+        write = STORE.index("_storage.setBytes", unchanged)
+        comparison = STORE[load:unchanged]
+        for field in ("address", "port", "path", "protocolVersion"):
+            self.assertIn("existing." + field + " == endpoint." + field, comparison)
+        self.assertLess(unchanged, write)
+        self.assertIn("return true;", STORE[unchanged:write])
+
+    def test_changed_cache_is_persisted(self):
+        self.assertIn(
+            "const bool saved = _storage.setBytes(STORAGE_KEY, &stored, sizeof(stored));",
+            STORE,
+        )
+
     def test_old_application_servers_are_removed(self):
         all_source = "\n".join(
             p.read_text(errors="ignore") for p in (ROOT / "src").rglob("*") if p.is_file()

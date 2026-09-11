@@ -132,6 +132,8 @@ bool discoveryAttemptActive = false;
 
 bool serverWasRegistered = false;
 
+bool measurementSequenceReady = false;
+
 unsigned long nextDiscoveryAttemptMs = 0;
 
 
@@ -141,6 +143,7 @@ unsigned long lastSensorCheckMs = 0;
 enum class ErrorState
 {
     NONE,
+    STORAGE,
     SENSOR,
     NETWORK,
     BACKEND
@@ -235,8 +238,13 @@ void updateErrorLed()
         ErrorState::NONE;
 
 
-    // Sensor error has the highest priority.
-    if (!sensorsReady) {
+    // Durable sequence reservation is required before measurements can be
+    // queued and therefore has the highest priority.
+    if (!measurementSequenceReady) {
+        currentErrorState =
+            ErrorState::STORAGE;
+    }
+    else if (!sensorsReady) {
         currentErrorState =
             ErrorState::SENSOR;
     }
@@ -272,6 +280,16 @@ void updateErrorLed()
         case ErrorState::NONE:
         {
             errorLed.off();
+
+            break;
+        }
+
+
+        case ErrorState::STORAGE:
+        {
+            // A steady error LED makes the boot-time persistent-storage
+            // failure visible even while networking and sensors keep running.
+            errorLed.on();
 
             break;
         }
@@ -507,6 +525,7 @@ void updateMeasurementOutbox()
     }
 
     if (
+        measurementSequenceReady &&
         pressureSensor.hasCompletedBubbleActivityWindow()
     ) {
         const uint32_t previousDroppedCount = measurementOutbox.droppedCount();
@@ -649,7 +668,13 @@ void setup()
 
     // Reserve measurement sequences before any outbox enqueue is possible.
     measurementSequenceStore.begin();
-    measurementSequenceAllocator.begin();
+    measurementSequenceReady =
+        measurementSequenceAllocator.begin();
+
+    if (!measurementSequenceReady) {
+        Serial.println("MEASUREMENT_SEQUENCE_INITIALIZATION_FAILED");
+        errorLed.on();
+    }
 
 
     // Persistent configuration stores
@@ -745,6 +770,7 @@ void loop()
     // The send policy runs before the generic outbox. Network availability is
     // deliberately irrelevant here: eligible measurements can wait offline.
     if (
+        measurementSequenceReady &&
         newTemperatureMeasurement &&
         sessionInitialized &&
         sensorsReady &&

@@ -10,6 +10,8 @@ constexpr int KV_SUCCESS = 0;
 constexpr size_t STRING_BUFFER_SIZE = 128;
 
 constexpr char KV_PREFIX[] = "/kv/";
+constexpr int KV_ERROR_MEDIA_FULL = -2130771701;
+constexpr size_t KV_KEY_BUFFER_SIZE = 128;
 }
 
 
@@ -52,30 +54,7 @@ bool FlashStorage::setString(
 
 
     if (result != KV_SUCCESS) {
-        Serial.print(
-            "FlashStorage: failed to write key: "
-        );
-
-        Serial.print(
-            fullKey
-        );
-
-        Serial.print(
-            " result="
-        );
-
-        Serial.println(
-            result
-        );
-
-
-        Serial.print(
-            "FlashStorage: value length="
-        );
-
-        Serial.println(
-            value.length()
-        );
+        printWriteError(fullKey, result, value.length() + 1);
 
         return false;
     }
@@ -176,30 +155,7 @@ bool FlashStorage::setBytes(
 
 
     if (result != KV_SUCCESS) {
-        Serial.print(
-            "FlashStorage: failed to write key: "
-        );
-
-        Serial.print(
-            fullKey
-        );
-
-        Serial.print(
-            " result="
-        );
-
-        Serial.println(
-            result
-        );
-
-
-        Serial.print(
-            "FlashStorage: data size="
-        );
-
-        Serial.println(
-            size
-        );
+        printWriteError(fullKey, result, size);
 
         return false;
     }
@@ -361,97 +317,84 @@ bool FlashStorage::clearAll()
 void FlashStorage::debugPrintAll()
 {
     Serial.println();
-
-    Serial.println(
-        "========== FlashStorage =========="
-    );
-
-
-    String value;
-
-
-    auto printString =
-        [&](const char* key)
-        {
-            if (
-                getString(
-                    key,
-                    value
-                )
-            ) {
-                Serial.print(
-                    key
-                );
-
-                Serial.print(
-                    ": "
-                );
-
-                Serial.println(
-                    value
-                );
-            } else {
-                Serial.print(
-                    key
-                );
-
-                Serial.println(
-                    ": <not set>"
-                );
-            }
-        };
-
-
-    printString(
-        "device_uuid"
-    );
-
-    printString(
-        "device_name"
-    );
-
-    Serial.print(
-        "wifi_config: "
-    );
-
-    Serial.println(
-        exists(
-            "wifi_config"
-        )
-            ? "<stored>"
-            : "<not set>"
-    );
-
-
-    Serial.print(
-        "server_config: "
-    );
-
-    Serial.println(
-        exists(
-            "server_config"
-        )
-            ? "<stored>"
-            : "<not set>"
-    );
-
-
-    Serial.print(
-        "temperature_config: "
-    );
-
-    Serial.println(
-        exists(
-            "temperature_config"
-        )
-            ? "<stored>"
-            : "<not set>"
-    );
-
-
-    Serial.println(
-        "=================================="
-    );
-
+    Serial.println("========== FlashStorage ==========");
+    debugPrintEntries();
+    Serial.println("==================================");
     Serial.println();
+}
+
+
+void FlashStorage::printWriteError(
+    const String& key,
+    int result,
+    size_t size
+) const
+{
+    Serial.print("FlashStorage: failed to write key: ");
+    Serial.print(key);
+    Serial.print(" result=");
+    Serial.println(result);
+    Serial.print("FlashStorage: data size=");
+    Serial.println(size);
+
+    if (result == KV_ERROR_MEDIA_FULL) {
+        Serial.println(
+            "FlashStorage: MBED_ERROR_MEDIA_FULL; KVStore has no space for this write."
+        );
+    }
+}
+
+
+void FlashStorage::debugPrintEntries()
+{
+    kv_iterator_t iterator;
+    const int openResult = kv_iterator_open(&iterator, KV_PREFIX);
+    size_t count = 0;
+    size_t liveDataBytes = 0;
+
+    if (openResult != KV_SUCCESS) {
+        Serial.print("KV_ITERATOR_OPEN_FAILED,");
+        Serial.println(openResult);
+        Serial.println("KV_ENTRY_COUNT,0");
+        Serial.println("KV_LIVE_DATA_BYTES,0");
+        return;
+    }
+
+    char key[KV_KEY_BUFFER_SIZE] = {};
+    int nextResult = KV_SUCCESS;
+    while ((nextResult = kv_iterator_next(iterator, key, sizeof(key))) == KV_SUCCESS) {
+        kv_info_t info = {};
+        const int infoResult = kv_get_info(key, &info);
+        if (infoResult != KV_SUCCESS) {
+            Serial.print("KV_ENTRY_INFO_FAILED,");
+            Serial.print(key);
+            Serial.print(',');
+            Serial.println(infoResult);
+            continue;
+        }
+
+        Serial.print("KV_ENTRY,");
+        Serial.print(key);
+        Serial.print(',');
+        Serial.print(static_cast<unsigned long>(info.size));
+        Serial.print(',');
+        Serial.println(static_cast<unsigned long>(info.flags));
+        ++count;
+        liveDataBytes += info.size;
+    }
+
+    const int closeResult = kv_iterator_close(iterator);
+    if (nextResult != MBED_ERROR_ITEM_NOT_FOUND) {
+        Serial.print("KV_ITERATOR_NEXT_FAILED,");
+        Serial.println(nextResult);
+    }
+    if (closeResult != KV_SUCCESS) {
+        Serial.print("KV_ITERATOR_CLOSE_FAILED,");
+        Serial.println(closeResult);
+    }
+
+    Serial.print("KV_ENTRY_COUNT,");
+    Serial.println(static_cast<unsigned long>(count));
+    Serial.print("KV_LIVE_DATA_BYTES,");
+    Serial.println(static_cast<unsigned long>(liveDataBytes));
 }
