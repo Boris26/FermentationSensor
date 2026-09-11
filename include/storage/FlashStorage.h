@@ -39,6 +39,14 @@ public:
 
     bool clearAll();
 
+    // Destructive erase intended only for an explicit factory-reset flow.
+    bool factoryReset();
+
+    // Low-level operation used by StorageMaintenance after its complete
+    // in-RAM backup has been validated. It is deliberately not called by
+    // begin() or any normal boot path.
+    bool resetForMaintenance();
+
     bool clearWifi();
 
     void debugPrintAll();
