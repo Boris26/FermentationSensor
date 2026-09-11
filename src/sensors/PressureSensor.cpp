@@ -13,6 +13,20 @@ namespace
     unsigned long lastReadMs = 0;
 }
 
+PressureSensor::PressureSensor()
+    : _bubbleDetector({
+        PRESSURE_CALIBRATION_MS,
+        BUBBLE_MIN_TRIGGER_DELTA_PA,
+        BUBBLE_NOISE_FACTOR,
+        BUBBLE_RELEASE_FACTOR,
+        BUBBLE_MIN_DURATION_MS,
+        BUBBLE_MAX_DURATION_MS,
+        BUBBLE_REFRACTORY_MS,
+        PRESSURE_BASELINE_TRACKING_ALPHA
+    })
+{
+}
+
 
 void PressureSensor::begin()
 {
@@ -70,13 +84,53 @@ void PressureSensor::update()
     _pressurePa =
         data.presure;
 
+    const bool wasCalibrated =
+        _bubbleDetector.isCalibrated();
+
+    const bool bubbleDetected =
+        _bubbleDetector.processSample(now, _pressurePa);
+
     if (PRESSURE_DIAGNOSTICS_ENABLED)
     {
         Serial.print("PRESSURE,");
         Serial.print(now);
         Serial.print(',');
         Serial.println(_pressurePa, 2);
+
+        if (!wasCalibrated && _bubbleDetector.isCalibrated())
+        {
+            Serial.print("PRESSURE_CALIBRATED,baseline=");
+            Serial.print(_bubbleDetector.baselinePa(), 2);
+            Serial.print(",noise=");
+            Serial.print(_bubbleDetector.noisePa(), 2);
+            Serial.print(",trigger=");
+            Serial.print(_bubbleDetector.triggerDeltaPa(), 2);
+            Serial.print(",release=");
+            Serial.println(_bubbleDetector.releaseDeltaPa(), 2);
+        }
+
+        if (bubbleDetected)
+        {
+            const BubbleEvent& event =
+                _bubbleDetector.lastBubbleEvent();
+            Serial.print("BUBBLE,");
+            Serial.print(event.startedAtMs);
+            Serial.print(',');
+            Serial.print(event.durationMs);
+            Serial.print(',');
+            Serial.println(event.peakDeltaPa, 2);
+        }
     }
+}
+
+void PressureSensor::onSessionRunning()
+{
+    if (_available) _bubbleDetector.onRunning(millis());
+}
+
+void PressureSensor::onSessionPaused()
+{
+    if (_available) _bubbleDetector.onPaused(millis());
 }
 
 

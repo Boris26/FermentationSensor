@@ -700,6 +700,12 @@ void loop()
         const MeasurementState currentState =
             measurementSession.getState();
 
+        if (currentState == MeasurementState::RUNNING) {
+            pressureSensor.onSessionRunning();
+        } else if (currentState == MeasurementState::PAUSED) {
+            pressureSensor.onSessionPaused();
+        }
+
 
         if (
             currentState !=

@@ -28,6 +28,16 @@ constexpr float TEMPERATURE_SEND_DELTA_C = 1.0f;
 constexpr unsigned long PRESSURE_SAMPLE_INTERVAL_MS = 100;
 constexpr bool PRESSURE_DIAGNOSTICS_ENABLED = true;
 
+// Pressure calibration and technical bubble detection
+constexpr unsigned long PRESSURE_CALIBRATION_MS = 300000;
+constexpr float BUBBLE_MIN_TRIGGER_DELTA_PA = 0.50f;
+constexpr float BUBBLE_NOISE_FACTOR = 5.0f;
+constexpr float BUBBLE_RELEASE_FACTOR = 0.40f;
+constexpr unsigned long BUBBLE_MIN_DURATION_MS = 100;
+constexpr unsigned long BUBBLE_MAX_DURATION_MS = 3000;
+constexpr unsigned long BUBBLE_REFRACTORY_MS = 500;
+constexpr float PRESSURE_BASELINE_TRACKING_ALPHA = 0.001f;
+
 
 // Status / Heartbeat
 constexpr unsigned long HEARTBEAT_INTERVAL_MS = 60000;
