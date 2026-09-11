@@ -10,6 +10,7 @@
 
 #include "network/GatewayDiscovery.h"
 #include "network/MeasurementOutbox.h"
+#include "network/MeasurementSequenceAllocator.h"
 #include "network/NetworkManager.h"
 #include "network/ServerClient.h"
 #include "network/TemperatureTransmissionPolicy.h"
@@ -26,6 +27,7 @@
 
 #include "storage/FlashStorage.h"
 #include "storage/GatewayEndpointStore.h"
+#include "storage/MeasurementSequenceStore.h"
 #include "storage/TemperatureSensorStore.h"
 #include "storage/WifiCredentialStore.h"
 
@@ -64,8 +66,17 @@ TemperatureTransmissionPolicy temperatureTransmissionPolicy(
     TEMPERATURE_SEND_DELTA_C
 );
 
+MeasurementSequenceStore measurementSequenceStore(
+    flashStorage
+);
+
+MeasurementSequenceAllocator measurementSequenceAllocator(
+    measurementSequenceStore
+);
+
 MeasurementOutbox measurementOutbox(
-    MEASUREMENT_ACK_TIMEOUT_MS
+    MEASUREMENT_ACK_TIMEOUT_MS,
+    measurementSequenceAllocator
 );
 
 
@@ -635,6 +646,10 @@ void setup()
 
     // Device identity
     deviceIdentity.begin();
+
+    // Reserve measurement sequences before any outbox enqueue is possible.
+    measurementSequenceStore.begin();
+    measurementSequenceAllocator.begin();
 
 
     // Persistent configuration stores

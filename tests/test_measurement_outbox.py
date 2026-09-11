@@ -25,9 +25,26 @@ class MeasurementOutboxTests(unittest.TestCase):
             #include <cassert>
             #include <stdint.h>
 
+            class FakeSequenceSource : public MeasurementSequenceSource
+            {
+            public:
+                explicit FakeSequenceSource(uint32_t first) : nextValue(first) {}
+                bool next(uint32_t& sequence) override
+                {
+                    ++calls;
+                    if (fail) return false;
+                    sequence = nextValue++;
+                    return true;
+                }
+                uint32_t nextValue;
+                uint32_t calls = 0;
+                bool fail = false;
+            };
+
             int main()
             {
-                MeasurementOutbox outbox(5000, 100);
+                FakeSequenceSource sequences(100);
+                MeasurementOutbox outbox(5000, sequences);
                 assert(outbox.empty());
                 assert(outbox.capacity() == MEASUREMENT_OUTBOX_CAPACITY);
 
@@ -77,6 +94,17 @@ class MeasurementOutboxTests(unittest.TestCase):
                 assert(outbox.shouldSend(true, true, 5102));
                 assert(outbox.acknowledge(101));
 
+                // ACK and retry do not allocate; a new temperature does.
+                assert(sequences.calls == 2);
+                assert(outbox.enqueueTemperature(21.0f, 19.0f, false, 0, 70000));
+                assert(outbox.front().sequence == 102);
+                assert(sequences.calls == 3);
+                outbox.recordSuccessfulSend(5200);
+                assert(outbox.shouldSend(true, true, 10200));
+                assert(sequences.calls == 3);
+                assert(outbox.acknowledge(102));
+                assert(sequences.calls == 3);
+
                 // Fill the configured ring and verify DROP OLDEST overflow.
                 for (size_t i = 0; i < outbox.capacity(); ++i) {
                     assert(outbox.enqueueTemperature(i, i, false, 0, i));
@@ -96,6 +124,14 @@ class MeasurementOutboxTests(unittest.TestCase):
                 BubbleActivityWindow missingPressure;
                 missingPressure.durationMs = 60000;
                 assert(!outbox.enqueueBubbleActivity(missingPressure));
+
+                // Allocation fails closed without dropping or appending data.
+                const size_t sizeBeforeFailure = outbox.size();
+                const uint32_t frontBeforeFailure = outbox.front().sequence;
+                sequences.fail = true;
+                assert(!outbox.enqueueTemperature(1, 2, false, 0, 3));
+                assert(outbox.size() == sizeBeforeFailure);
+                assert(outbox.front().sequence == frontBeforeFailure);
 
                 // Unsigned subtraction naturally handles millis() rollover.
                 OutboxEntry wrapped = {};
