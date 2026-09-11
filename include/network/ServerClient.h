@@ -31,7 +31,7 @@ public:
 
     uint8_t failedConnectionCycles() const;
 
-    void sendTemperatureMeasurement(
+    bool sendTemperatureMeasurement(
         float beerTemperature,
         float ambientTemperature,
         bool pressureAvailable,

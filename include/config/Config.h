@@ -21,6 +21,7 @@ constexpr uint8_t SESSION_LED_PIN = 6;
 
 // Temperature
 constexpr unsigned long TEMPERATURE_INTERVAL_MS = 60000;
+constexpr float TEMPERATURE_SEND_DELTA_C = 1.0f;
 
 
 // Status / Heartbeat

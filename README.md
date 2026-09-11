@@ -70,7 +70,11 @@ Zwei DS18B20-Sensoren messen Bier- und Umgebungstemperatur asynchron. Die Firmwa
 IDLE -> RUNNING -> PAUSED -> RUNNING
 ```
 
-Nur in `RUNNING` werden frische Messwerte an ein registriertes Gateway gesendet. Es gibt derzeit bewusst keine Offline Queue und keinen Replay.
+Die beiden Temperaturen werden weiterhin ungefähr alle 60 Sekunden frisch gemessen und lokal aktualisiert. Nur in `RUNNING` werden sie an ein registriertes Gateway übertragen. Die erste gültige gemeinsame Messung wird gesendet; danach erfolgt eine Übertragung erst, wenn sich mindestens eine Temperatur um mindestens 1,0 °C gegenüber ihrem zuletzt **erfolgreich** gesendeten Wert geändert hat. Fehlgeschlagene Sendungen verschieben diesen Vergleichswert nicht und werden deshalb beim nächsten gültigen Messzyklus erneut versucht. Nach jeder neuen erfolgreichen `REGISTER_SENSOR_ACK`-Session wird der nächste aktuelle gültige Temperaturstand unabhängig von der Differenz einmal übertragen; Pause/Resume allein erzwingt keine Übertragung. `pressurePa` kann dabei weiterhin als technischer Snapshot mitlaufen und beeinflusst die Temperatur-Sendeentscheidung nicht.
+
+Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidentität wurden geprüft: WLAN-Reconnect, Cache-first Gateway-Auswahl, DNS-SD-Fallback, Speichern entdeckter Endpunkte, WebSocket-Backoff, Rediscovery und Registrierung pro Verbindung sind vorhanden. `deviceId` und `deviceName` liegen persistent im Flash; eine neue UUID entsteht nur bei fehlender oder ungültiger Konfiguration.
+
+**Offline measurement buffering is not implemented.** Es gibt weder RAM-/Ring-/Flash-Queue noch Replay gespeicherter Messwerte nach einem Reconnect.
 
 ## LEDs
 
