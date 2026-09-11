@@ -655,7 +655,7 @@ bool ServerClient::parseMessageType(
     return position == message.length();
 }
 
-void ServerClient::sendTemperatureMeasurement(
+bool ServerClient::sendTemperatureMeasurement(
     float beerTemperature,
     float ambientTemperature,
     bool pressureAvailable,
@@ -667,7 +667,7 @@ void ServerClient::sendTemperatureMeasurement(
         !_registered ||
         _webSocketClient == nullptr
     ) {
-        return;
+        return false;
     }
 
     String message;
@@ -714,5 +714,9 @@ void ServerClient::sendTemperatureMeasurement(
         Serial.println(
             message
         );
+
+        return true;
     }
+
+    return false;
 }

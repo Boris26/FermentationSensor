@@ -3,12 +3,12 @@
 #include <Arduino.h>
 #include <DFRobot_LWLP.h>
 
+#include "config/Config.h"
+
 
 namespace
 {
     DFRobot_LWLP lwlp;
-
-    constexpr unsigned long READ_INTERVAL_MS = 500;
 
     unsigned long lastReadMs = 0;
 }
@@ -56,7 +56,7 @@ void PressureSensor::update()
 
     if (
         now - lastReadMs <
-        READ_INTERVAL_MS
+        PRESSURE_SAMPLE_INTERVAL_MS
     )
     {
         return;
@@ -70,27 +70,13 @@ void PressureSensor::update()
     _pressurePa =
         data.presure;
 
-    Serial.print(
-        "PressureSensor: "
-    );
-
-    Serial.print(
-        _pressurePa,
-        2
-    );
-
-    Serial.print(
-        " Pa | Sensor temperature: "
-    );
-
-    Serial.print(
-        data.temperature,
-        2
-    );
-
-    Serial.println(
-        " C"
-    );
+    if (PRESSURE_DIAGNOSTICS_ENABLED)
+    {
+        Serial.print("PRESSURE,");
+        Serial.print(now);
+        Serial.print(',');
+        Serial.println(_pressurePa, 2);
+    }
 }
 
 

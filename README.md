@@ -70,7 +70,23 @@ Zwei DS18B20-Sensoren messen Bier- und Umgebungstemperatur asynchron. Die Firmwa
 IDLE -> RUNNING -> PAUSED -> RUNNING
 ```
 
-Nur in `RUNNING` werden frische Messwerte an ein registriertes Gateway gesendet. Es gibt derzeit bewusst keine Offline Queue und keinen Replay.
+Die beiden Temperaturen werden weiterhin ungefähr alle 60 Sekunden frisch gemessen und lokal aktualisiert. Nur in `RUNNING` werden sie an ein registriertes Gateway übertragen. Die erste gültige gemeinsame Messung wird gesendet; danach erfolgt eine Übertragung erst, wenn sich mindestens eine Temperatur um mindestens 1,0 °C gegenüber ihrem zuletzt **erfolgreich** gesendeten Wert geändert hat. Fehlgeschlagene Sendungen verschieben diesen Vergleichswert nicht und werden deshalb beim nächsten gültigen Messzyklus erneut versucht. Nach jeder neuen erfolgreichen `REGISTER_SENSOR_ACK`-Session wird der nächste aktuelle gültige Temperaturstand unabhängig von der Differenz einmal übertragen; Pause/Resume allein erzwingt keine Übertragung. `pressurePa` kann dabei weiterhin als technischer Snapshot mitlaufen und beeinflusst die Temperatur-Sendeentscheidung nicht.
+
+Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidentität wurden geprüft: WLAN-Reconnect, Cache-first Gateway-Auswahl, DNS-SD-Fallback, Speichern entdeckter Endpunkte, WebSocket-Backoff, Rediscovery und Registrierung pro Verbindung sind vorhanden. `deviceId` und `deviceName` liegen persistent im Flash; eine neue UUID entsteht nur bei fehlender oder ungültiger Konfiguration.
+
+**Offline measurement buffering is not implemented.** Es gibt weder RAM-/Ring-/Flash-Queue noch Replay gespeicherter Messwerte nach einem Reconnect.
+
+### Druckdiagnose
+
+Der DFRobot LWLP5000 / SEN0343 misst den Differenzdruck zwischen Gärbehälter und Umgebung in Pascal. Während einer laufenden `RUNNING`-Session liest die Firmware den Sensor nicht blockierend alle 100 ms (etwa 10 Messwerte pro Sekunde) und gibt bei aktiviertem `PRESSURE_DIAGNOSTICS_ENABLED` eine maschinenlesbare Zeile aus:
+
+```text
+PRESSURE,<millis>,<pressurePa>
+```
+
+Der Zeitstempel basiert auf `millis()`, der Druckwert besitzt zwei Nachkommastellen. Mit `PRESSURE_DIAGNOSTICS_ENABLED = false` wird nur diese serielle Rohdatenausgabe abgeschaltet; die interne Druckmessung und der optionale `pressurePa`-Snapshot einer tatsächlich gesendeten `TEMPERATURE_MEASUREMENT` bleiben erhalten. Die 10-Hz-Rohwerte erzeugen keine zusätzlichen Gateway-Nachrichten. In `IDLE` und `PAUSED` findet weiterhin keine laufende Druckmessreihe statt.
+
+Die Druckwerte werden aktuell **nicht** als Blubbs interpretiert. Eine spätere Bubble Detection wird anhand real aufgezeichneter Druckkurven entwickelt.
 
 ## LEDs
 

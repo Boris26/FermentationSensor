@@ -11,6 +11,7 @@
 #include "network/GatewayDiscovery.h"
 #include "network/NetworkManager.h"
 #include "network/ServerClient.h"
+#include "network/TemperatureTransmissionPolicy.h"
 #include "network/WifiCredentials.h"
 #include "network/WifiSetupPortal.h"
 
@@ -56,6 +57,10 @@ GatewayDiscovery gatewayDiscovery;
 
 ServerClient serverClient(
     deviceIdentity
+);
+
+TemperatureTransmissionPolicy temperatureTransmissionPolicy(
+    TEMPERATURE_SEND_DELTA_C
 );
 
 
@@ -108,6 +113,8 @@ bool cachedEndpointPending = false;
 bool wifiWasConnected = false;
 
 bool discoveryAttemptActive = false;
+
+bool serverWasRegistered = false;
 
 unsigned long nextDiscoveryAttemptMs = 0;
 
@@ -348,6 +355,7 @@ void updateServerClient()
             discoveryAttemptActive = false;
         }
         wifiWasConnected = false;
+        serverWasRegistered = false;
         return;
     }
 
@@ -370,6 +378,21 @@ void updateServerClient()
 
     if (gatewayEndpointActive) {
         serverClient.update();
+
+        const bool serverRegistered =
+            serverClient.isRegistered();
+
+        if (
+            serverRegistered &&
+            !serverWasRegistered
+        ) {
+            temperatureTransmissionPolicy
+                .requestCurrentMeasurement();
+        }
+
+        serverWasRegistered =
+            serverRegistered;
+
         if (serverClient.isRegistered()) cachedEndpointPending = false;
 
         const uint8_t failureLimit = cachedEndpointPending
@@ -378,6 +401,7 @@ void updateServerClient()
         if (serverClient.failedConnectionCycles() >= failureLimit) {
             Serial.println("Gateway: endpoint failed; starting rediscovery.");
             serverClient.stop();
+            serverWasRegistered = false;
             gatewayEndpointActive = false;
             cachedEndpointPending = false;
             gatewayDiscovery.start();
@@ -607,22 +631,36 @@ void loop()
     updateSensorInitialization();
 
 
-    // Send fresh temperature measurements
-    // only while the session is running
-    // and the sensor is registered.
+    // Evaluate each fresh measurement while RUNNING. The policy compares
+    // against values from the last successful WebSocket transmission.
     if (
         newTemperatureMeasurement &&
         sessionInitialized &&
         sensorsReady &&
         measurementSession.isRunning() &&
-        serverClient.isRegistered()
-    ) {
-        serverClient.sendTemperatureMeasurement(
+        serverClient.isRegistered() &&
+        temperatureTransmissionPolicy.shouldSend(
             temperatureSensor.getBeerTemperature(),
-            temperatureSensor.getAmbientTemperature(),
+            temperatureSensor.getAmbientTemperature()
+        )
+    ) {
+        const float beerTemperature =
+            temperatureSensor.getBeerTemperature();
+
+        const float ambientTemperature =
+            temperatureSensor.getAmbientTemperature();
+
+        if (serverClient.sendTemperatureMeasurement(
+            beerTemperature,
+            ambientTemperature,
             pressureSensor.isAvailable(),
             pressureSensor.getPressurePa()
-        );
+        )) {
+            temperatureTransmissionPolicy.recordSuccessfulSend(
+                beerTemperature,
+                ambientTemperature
+            );
+        }
     }
 
 
