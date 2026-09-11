@@ -44,6 +44,9 @@ public:
     void debugPrintAll();
 
 private:
+    void printWriteError(const String& key, int result, size_t size) const;
+    void debugPrintEntries();
+
     String buildKey(
         const char* key
     ) const;

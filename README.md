@@ -2,6 +2,18 @@
 
 Firmware für einen Fermentationssensor auf dem **Arduino Nano RP2040 Connect**. Das Gerät erfasst Temperaturen und Differenzdruck und arbeitet im Anwendungsnetz ausschließlich als Client. Fachliche Zuordnung und Bewertung (etwa BeerDataStore, `beerId`, Plato oder Gärstatus) sind nicht Bestandteil der Firmware.
 
+## Getestete Build-Umgebung
+
+Die derzeit getestete und in `platformio.ini` fixierte Umgebung ist:
+
+- PlatformIO-Plattform `platformio/raspberrypi` **1.11.0**,
+- Framework `framework-arduino-mbed` **4.0.10**,
+- Board `nanorp2040connect` (Arduino Nano RP2040 Connect).
+
+Ein Upgrade der Plattform oder des Frameworks ist ausdrücklich ein separater
+Schritt und darf nicht implizit zusammen mit Änderungen am persistenten Speicher
+erfolgen.
+
 ## Netzwerkarchitektur
 
 Nach dem WLAN-Provisioning betreibt der Sensor keinen anwendungsspezifischen TCP- oder UDP-Server. Der Ablauf ist:
@@ -75,6 +87,19 @@ Beim ersten Start wird eine UUID v4 erzeugt, mit Hardwaredaten des NINA-W102 ang
 - der Last-Known-Gateway-Cache,
 - die Zuordnung der DS18B20-ROM-IDs zu Bier- und Umgebungssensor,
 - der Start des nächsten freien Measurement-Sequence-Blocks.
+
+Die aktuellen KV-Keys unter `/kv/` sind `device_config`, `wifi_config`,
+`temperature_config`, `gateway_cache` und `measurement_sequence_v1`. Aus älteren
+Firmwareständen können außerdem `wifi_ssid`, `wifi_password`, `device_uuid`,
+`device_name` und `server_config` vorhanden sein. Diese Legacy-Keys werden nicht
+automatisch entfernt.
+
+Beim Boot listet die Flash-Diagnose ausschließlich Keyname, Nutzdatengröße und
+Flags als `KV_ENTRY,<key>,<size>,<flags>` auf. Danach folgen `KV_ENTRY_COUNT` und
+`KV_LIVE_DATA_BYTES`. Werte – insbesondere WLAN-Zugangsdaten – werden dabei nie
+ausgegeben. Diese Live-Daten-Summe beschreibt nicht den durch alte TDBStore-
+Logeinträge belegten Rohspeicher; der Vergleich mit der KV-Gesamtgröße hilft aber,
+zwischen vielen aktiven Keys und Log-/Compaction-Druck zu unterscheiden.
 
 ### Persistente Measurement-Sequenzen
 
