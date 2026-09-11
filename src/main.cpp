@@ -8,8 +8,7 @@
 
 #include "input/MeasurementButton.h"
 
-#include "network/BootstrapServer.h"
-#include "network/DiscoveryService.h"
+#include "network/GatewayDiscovery.h"
 #include "network/NetworkManager.h"
 #include "network/ServerClient.h"
 #include "network/WifiCredentials.h"
@@ -24,7 +23,7 @@
 #include "session/MeasurementSession.h"
 
 #include "storage/FlashStorage.h"
-#include "storage/ServerConfigurationStore.h"
+#include "storage/GatewayEndpointStore.h"
 #include "storage/TemperatureSensorStore.h"
 #include "storage/WifiCredentialStore.h"
 
@@ -49,18 +48,11 @@ WifiSetupPortal wifiSetupPortal(
 );
 
 
-DiscoveryService discoveryService(
-    deviceIdentity
-);
-
-
-ServerConfigurationStore serverConfigurationStore(
+GatewayEndpointStore gatewayEndpointStore(
     flashStorage
 );
 
-BootstrapServer bootstrapServer(
-    serverConfigurationStore
-);
+GatewayDiscovery gatewayDiscovery;
 
 ServerClient serverClient(
     deviceIdentity
@@ -109,7 +101,15 @@ bool sensorsReady = false;
 
 bool sessionInitialized = false;
 
-bool serverClientStarted = false;
+bool gatewayEndpointActive = false;
+
+bool cachedEndpointPending = false;
+
+bool wifiWasConnected = false;
+
+bool discoveryAttemptActive = false;
+
+unsigned long nextDiscoveryAttemptMs = 0;
 
 
 unsigned long lastSensorCheckMs = 0;
@@ -336,37 +336,83 @@ void updateSensorInitialization()
 
 void updateServerClient()
 {
-    if (!networkManager.isConnected()) {
-        serverClient.onNetworkDisconnected();
+    const bool wifiConnected = networkManager.isConnected();
 
+    if (!wifiConnected) {
+        if (wifiWasConnected) {
+            serverClient.onNetworkDisconnected();
+            serverClient.stop();
+            gatewayDiscovery.stop();
+            gatewayEndpointActive = false;
+            cachedEndpointPending = false;
+            discoveryAttemptActive = false;
+        }
+        wifiWasConnected = false;
         return;
     }
 
-
-    const bool configurationChanged =
-        bootstrapServer
-            .consumeConfigurationChanged();
-
-
-    if (
-        !serverClientStarted ||
-        configurationChanged
-    ) {
-        const ServerConfiguration configuration =
-            serverConfigurationStore.load();
-
-
-        if (configuration.isValid()) {
-            serverClient.begin(
-                configuration
-            );
-
-            serverClientStarted = true;
+    if (!wifiWasConnected) {
+        wifiWasConnected = true;
+        const GatewayEndpoint cached = gatewayEndpointStore.load();
+        if (cached.isValid()) {
+            Serial.println("Gateway: trying last-known endpoint cache first.");
+            serverClient.begin(cached);
+            gatewayEndpointActive = true;
+            cachedEndpointPending = true;
+        } else {
+            gatewayDiscovery.start();
+            discoveryAttemptActive = gatewayDiscovery.isRunning();
+            if (!discoveryAttemptActive) {
+                nextDiscoveryAttemptMs = millis() + GATEWAY_DISCOVERY_RETRY_INTERVAL_MS;
+            }
         }
     }
 
+    if (gatewayEndpointActive) {
+        serverClient.update();
+        if (serverClient.isRegistered()) cachedEndpointPending = false;
 
-    serverClient.update();
+        const uint8_t failureLimit = cachedEndpointPending
+            ? 1
+            : GATEWAY_REDISCOVERY_FAILURE_THRESHOLD;
+        if (serverClient.failedConnectionCycles() >= failureLimit) {
+            Serial.println("Gateway: endpoint failed; starting rediscovery.");
+            serverClient.stop();
+            gatewayEndpointActive = false;
+            cachedEndpointPending = false;
+            gatewayDiscovery.start();
+            discoveryAttemptActive = gatewayDiscovery.isRunning();
+            if (!discoveryAttemptActive) {
+                nextDiscoveryAttemptMs = millis() + GATEWAY_DISCOVERY_RETRY_INTERVAL_MS;
+            }
+        }
+    }
+
+    gatewayDiscovery.update();
+    GatewayEndpoint discovered;
+    if (gatewayDiscovery.takeResult(discovered)) {
+        gatewayEndpointStore.save(discovered);
+        serverClient.begin(discovered);
+        gatewayEndpointActive = true;
+        cachedEndpointPending = false;
+        discoveryAttemptActive = false;
+        return;
+    }
+
+    if (discoveryAttemptActive && !gatewayDiscovery.isRunning()) {
+        discoveryAttemptActive = false;
+        nextDiscoveryAttemptMs = millis() + GATEWAY_DISCOVERY_RETRY_INTERVAL_MS;
+    }
+
+    if (!gatewayEndpointActive && !gatewayDiscovery.isRunning() &&
+        !discoveryAttemptActive &&
+        static_cast<long>(millis() - nextDiscoveryAttemptMs) >= 0) {
+        gatewayDiscovery.start();
+        discoveryAttemptActive = gatewayDiscovery.isRunning();
+        if (!discoveryAttemptActive) {
+            nextDiscoveryAttemptMs = millis() + GATEWAY_DISCOVERY_RETRY_INTERVAL_MS;
+        }
+    }
 }
 
 
@@ -476,7 +522,7 @@ void setup()
 
     temperatureSensorStore.begin();
 
-    serverConfigurationStore.begin();
+    gatewayEndpointStore.begin();
 
 
     // Sensors
@@ -547,10 +593,6 @@ void loop()
     networkManager.update();
 
     wifiSetupPortal.update();
-
-    discoveryService.update();
-
-    bootstrapServer.update();
 
     updateServerClient();
 

@@ -10,10 +10,10 @@ ServerClient::ServerClient(
 
 
 void ServerClient::begin(
-    const ServerConfiguration& configuration
+    const GatewayEndpoint& endpoint
 )
 {
-    if (!configuration.isValid()) {
+    if (!endpoint.isValid()) {
         Serial.println(
             "ServerClient: no valid server configuration."
         );
@@ -28,14 +28,15 @@ void ServerClient::begin(
         _webSocketClient = nullptr;
     }
 
-    _configuration =
-        configuration;
+    _endpoint = endpoint;
 
     _configured = true;
 
     _connected = false;
 
     _registered = false;
+
+    _failedConnectionCycles = 0;
 
     _reconnectIntervalMs = INITIAL_RECONNECT_INTERVAL_MS;
 
@@ -45,7 +46,7 @@ void ServerClient::begin(
     );
 
     Serial.print(
-        _configuration.host
+        _endpoint.address
     );
 
     Serial.print(
@@ -53,11 +54,11 @@ void ServerClient::begin(
     );
 
     Serial.print(
-        _configuration.port
+        _endpoint.port
     );
 
     Serial.println(
-        _configuration.path
+        _endpoint.path
     );
 
 
@@ -93,6 +94,7 @@ void ServerClient::update()
         _webSocketClient == nullptr ||
         !_webSocketClient->connected()
     ) {
+        if (_failedConnectionCycles < 255) ++_failedConnectionCycles;
         disconnect();
 
         return;
@@ -112,6 +114,7 @@ void ServerClient::update()
             "ServerClient: registration ACK timed out."
         );
 
+        if (_failedConnectionCycles < 255) ++_failedConnectionCycles;
         disconnect();
     }
 }
@@ -148,6 +151,18 @@ void ServerClient::onNetworkDisconnected()
     disconnect();
 }
 
+void ServerClient::stop()
+{
+    disconnect();
+    _configured = false;
+    _failedConnectionCycles = 0;
+}
+
+uint8_t ServerClient::failedConnectionCycles() const
+{
+    return _failedConnectionCycles;
+}
+
 
 void ServerClient::connect()
 {
@@ -164,8 +179,8 @@ void ServerClient::connect()
         _webSocketClient =
             new WebSocketClient(
                 _wifiClient,
-                _configuration.host.c_str(),
-                _configuration.port
+                _endpoint.address.c_str(),
+                _endpoint.port
             );
 
 
@@ -193,7 +208,7 @@ void ServerClient::connect()
     );
 
     Serial.print(
-        _configuration.host
+        _endpoint.address
     );
 
     Serial.print(
@@ -201,17 +216,17 @@ void ServerClient::connect()
     );
 
     Serial.print(
-        _configuration.port
+        _endpoint.port
     );
 
     Serial.println(
-        _configuration.path
+        _endpoint.path
     );
 
 
     const int result =
         _webSocketClient->begin(
-            _configuration.path.c_str()
+            _endpoint.path.c_str()
         );
 
 
@@ -231,6 +246,8 @@ void ServerClient::connect()
         _connected = false;
 
         _registered = false;
+
+        if (_failedConnectionCycles < 255) ++_failedConnectionCycles;
 
         _reconnectIntervalMs *= 2;
 
@@ -328,6 +345,9 @@ void ServerClient::sendRegistration()
         Serial.println(
             message
         );
+    }
+    else if (_failedConnectionCycles < 255) {
+        ++_failedConnectionCycles;
     }
 }
 
@@ -508,6 +528,8 @@ void ServerClient::handleMessage(
     if (type == "REGISTER_SENSOR_ACK") {
         if (!_registered) {
             _registered = true;
+
+            _failedConnectionCycles = 0;
 
 
             Serial.println(
