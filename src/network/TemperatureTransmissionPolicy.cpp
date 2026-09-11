@@ -17,7 +17,7 @@ bool TemperatureTransmissionPolicy::shouldSend(
 ) const
 {
     if (
-        !_hasSuccessfulSend ||
+        !_hasQueuedMeasurement ||
         _currentMeasurementRequested
     ) {
         return true;
@@ -26,27 +26,27 @@ bool TemperatureTransmissionPolicy::shouldSend(
     return
         std::fabs(
             beerTemperature -
-            _lastSentBeerTemperature
+            _lastQueuedBeerTemperature
         ) >= _sendDeltaC ||
         std::fabs(
             ambientTemperature -
-            _lastSentAmbientTemperature
+            _lastQueuedAmbientTemperature
         ) >= _sendDeltaC;
 }
 
 
-void TemperatureTransmissionPolicy::recordSuccessfulSend(
+void TemperatureTransmissionPolicy::recordQueuedMeasurement(
     float beerTemperature,
     float ambientTemperature
 )
 {
-    _lastSentBeerTemperature =
+    _lastQueuedBeerTemperature =
         beerTemperature;
 
-    _lastSentAmbientTemperature =
+    _lastQueuedAmbientTemperature =
         ambientTemperature;
 
-    _hasSuccessfulSend = true;
+    _hasQueuedMeasurement = true;
     _currentMeasurementRequested = false;
 }
 
@@ -54,4 +54,9 @@ void TemperatureTransmissionPolicy::recordSuccessfulSend(
 void TemperatureTransmissionPolicy::requestCurrentMeasurement()
 {
     _currentMeasurementRequested = true;
+}
+
+bool TemperatureTransmissionPolicy::isCurrentMeasurementRequested() const
+{
+    return _currentMeasurementRequested;
 }

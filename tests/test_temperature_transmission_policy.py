@@ -28,31 +28,33 @@ class TemperatureTransmissionPolicyTests(unittest.TestCase):
 
                 // The first valid measurement is eligible.
                 assert(policy.shouldSend(20.0f, 18.0f));
-                policy.recordSuccessfulSend(20.0f, 18.0f);
+                policy.recordQueuedMeasurement(20.0f, 18.0f);
 
-                // Changes accumulate against the last successful send.
+                // Changes accumulate against the last queued measurement.
                 assert(!policy.shouldSend(20.5f, 18.4f));
                 assert(policy.shouldSend(21.0f, 18.4f));
-                policy.recordSuccessfulSend(21.0f, 18.4f);
+                policy.recordQueuedMeasurement(21.0f, 18.4f);
 
                 // Either temperature can independently trigger a send.
                 assert(policy.shouldSend(21.0f, 19.4f));
-                policy.recordSuccessfulSend(21.0f, 19.4f);
+                policy.recordQueuedMeasurement(21.0f, 19.4f);
 
                 // The threshold is inclusive.
                 assert(policy.shouldSend(20.0f, 19.4f));
                 assert(!policy.shouldSend(20.1f, 20.3f));
 
-                // A failed transport does not call recordSuccessfulSend, so
-                // the same relevant change remains eligible on the next cycle.
+                // A failed enqueue does not update the reference, so the same
+                // relevant change remains eligible on the next cycle.
                 assert(policy.shouldSend(22.0f, 19.4f));
                 assert(policy.shouldSend(22.0f, 19.4f));
-                policy.recordSuccessfulSend(22.0f, 19.4f);
+                policy.recordQueuedMeasurement(22.0f, 19.4f);
 
-                // A newly acknowledged transport session forces one snapshot.
+                // A newly acknowledged transport session requests one snapshot.
                 policy.requestCurrentMeasurement();
+                assert(policy.isCurrentMeasurementRequested());
                 assert(policy.shouldSend(22.1f, 19.5f));
-                policy.recordSuccessfulSend(22.1f, 19.5f);
+                policy.recordQueuedMeasurement(22.1f, 19.5f);
+                assert(!policy.isCurrentMeasurementRequested());
                 assert(!policy.shouldSend(22.1f, 19.5f));
 
                 return 0;
@@ -76,10 +78,10 @@ class TemperatureTransmissionPolicyTests(unittest.TestCase):
     def test_policy_scenarios(self):
         subprocess.run([str(self.executable)], check=True)
 
-    def test_only_successful_transport_updates_policy(self):
-        send = MAIN.index("if (serverClient.sendTemperatureMeasurement(")
+    def test_only_successful_enqueue_updates_policy(self):
+        send = MAIN.index("if (measurementOutbox.enqueueTemperature(")
         record = MAIN.index(
-            "temperatureTransmissionPolicy.recordSuccessfulSend(", send
+            "temperatureTransmissionPolicy.recordQueuedMeasurement(", send
         )
         self.assertLess(send, record)
 

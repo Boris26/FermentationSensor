@@ -1,6 +1,7 @@
 #pragma once
 
-#include <Arduino.h>
+#include <stddef.h>
+#include <stdint.h>
 
 
 constexpr char DEVICE_ID[] = "FERM-01";
@@ -37,7 +38,8 @@ constexpr unsigned long BUBBLE_MIN_DURATION_MS = 100;
 constexpr unsigned long BUBBLE_MAX_DURATION_MS = 3000;
 constexpr unsigned long BUBBLE_REFRACTORY_MS = 500;
 constexpr unsigned long BUBBLE_ACTIVITY_WINDOW_MS = 60000;
-constexpr unsigned long BUBBLE_ACTIVITY_ACK_TIMEOUT_MS = 5000;
+constexpr size_t MEASUREMENT_OUTBOX_CAPACITY = 384;
+constexpr unsigned long MEASUREMENT_ACK_TIMEOUT_MS = 5000;
 constexpr float PRESSURE_BASELINE_TRACKING_ALPHA = 0.001f;
 
 

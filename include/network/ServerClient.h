@@ -6,6 +6,7 @@
 
 #include "device/DeviceIdentity.h"
 #include "network/GatewayEndpoint.h"
+#include "network/MeasurementOutbox.h"
 
 
 class ServerClient
@@ -31,20 +32,9 @@ public:
 
     uint8_t failedConnectionCycles() const;
 
-    bool sendTemperatureMeasurement(
-        float beerTemperature,
-        float ambientTemperature,
-        bool pressureAvailable,
-        float pressurePa
-    );
+    bool sendMeasurement(const OutboxEntry& measurement, uint32_t nowMs);
 
-    bool sendBubbleActivity(
-        uint32_t sequence,
-        uint16_t bubbleCount,
-        uint32_t windowSeconds
-    );
-
-    bool takeBubbleActivityAcknowledgement(uint32_t& sequence);
+    bool takeMeasurementAcknowledgement(uint32_t& sequence);
 
 
 private:
@@ -70,7 +60,7 @@ private:
         String& type
     ) const;
 
-    bool parseBubbleActivityAcknowledgement(
+    bool parseMeasurementAcknowledgement(
         const String& message,
         uint32_t& sequence
     ) const;
@@ -91,8 +81,8 @@ private:
     bool _connected = false;
 
     bool _registered = false;
-    bool _hasBubbleActivityAcknowledgement = false;
-    uint32_t _bubbleActivityAcknowledgementSequence = 0;
+    bool _hasMeasurementAcknowledgement = false;
+    uint32_t _measurementAcknowledgementSequence = 0;
 
     uint8_t _failedConnectionCycles = 0;
 

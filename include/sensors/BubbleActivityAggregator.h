@@ -6,6 +6,7 @@ struct BubbleActivityWindow
 {
     unsigned long startedAtMs = 0;
     unsigned long durationMs = 0;
+    unsigned long completedAtMs = 0;
     uint16_t bubbleCount = 0;
 };
 

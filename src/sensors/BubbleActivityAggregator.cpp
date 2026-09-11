@@ -87,6 +87,7 @@ uint32_t BubbleActivityAggregator::completedWindowRevision() const
 void BubbleActivityAggregator::completeWindow(unsigned long nextWindowStartedAtMs)
 {
     _completedWindow = _currentWindow;
+    _completedWindow.completedAtMs = nextWindowStartedAtMs;
     _hasCompletedWindow = true;
     ++_completedWindowRevision;
     _currentWindow = BubbleActivityWindow();

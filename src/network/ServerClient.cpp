@@ -517,13 +517,12 @@ void ServerClient::handleMessage(
 {
     uint32_t acknowledgementSequence = 0;
 
-    if (parseBubbleActivityAcknowledgement(
+    if (parseMeasurementAcknowledgement(
         message,
         acknowledgementSequence
     )) {
-        _bubbleActivityAcknowledgementSequence =
-            acknowledgementSequence;
-        _hasBubbleActivityAcknowledgement = true;
+        _measurementAcknowledgementSequence = acknowledgementSequence;
+        _hasMeasurementAcknowledgement = true;
         return;
     }
 
@@ -560,28 +559,22 @@ void ServerClient::handleMessage(
     Serial.println(type);
 }
 
-bool ServerClient::parseBubbleActivityAcknowledgement(
+bool ServerClient::parseMeasurementAcknowledgement(
     const String& message,
     uint32_t& sequence
 ) const
 {
     size_t position = 0;
-
     const auto skipWhitespace = [&message, &position]() {
-        while (
-            position < message.length() &&
-            (message[position] == ' ' || message[position] == '\t' ||
-             message[position] == '\r' || message[position] == '\n')
-        ) ++position;
+        while (position < message.length() &&
+               (message[position] == ' ' || message[position] == '\t' ||
+                message[position] == '\r' || message[position] == '\n')) ++position;
     };
-
     const auto consume = [&message, &position](const char* expected) {
         size_t offset = 0;
         while (expected[offset] != '\0') {
-            if (
-                position >= message.length() ||
-                message[position++] != expected[offset++]
-            ) return false;
+            if (position >= message.length() ||
+                message[position++] != expected[offset++]) return false;
         }
         return true;
     };
@@ -593,7 +586,7 @@ bool ServerClient::parseBubbleActivityAcknowledgement(
     skipWhitespace();
     if (!consume(":")) return false;
     skipWhitespace();
-    if (!consume("\"BUBBLE_ACTIVITY_ACK\"")) return false;
+    if (!consume("\"MEASUREMENT_ACK\"")) return false;
     skipWhitespace();
     if (!consume(",")) return false;
     skipWhitespace();
@@ -601,32 +594,23 @@ bool ServerClient::parseBubbleActivityAcknowledgement(
     skipWhitespace();
     if (!consume(":")) return false;
     skipWhitespace();
-
-    if (
-        position >= message.length() ||
-        message[position] < '0' || message[position] > '9'
-    ) return false;
+    if (position >= message.length() ||
+        message[position] < '0' || message[position] > '9') return false;
 
     uint32_t value = 0;
-    while (
-        position < message.length() &&
-        message[position] >= '0' && message[position] <= '9'
-    ) {
-        const uint8_t digit =
-            static_cast<uint8_t>(message[position++] - '0');
+    while (position < message.length() &&
+           message[position] >= '0' && message[position] <= '9') {
+        const uint8_t digit = static_cast<uint8_t>(message[position++] - '0');
         if (value > (UINT32_MAX - digit) / 10U) return false;
         value = value * 10U + digit;
     }
-
     skipWhitespace();
     if (!consume("}")) return false;
     skipWhitespace();
     if (position != message.length()) return false;
-
     sequence = value;
     return true;
 }
-
 
 bool ServerClient::parseMessageType(
     const String& message,
@@ -634,206 +618,88 @@ bool ServerClient::parseMessageType(
 ) const
 {
     size_t position = 0;
-
-    const auto skipWhitespace =
-        [&message, &position]()
-        {
-            while (
-                position < message.length() &&
-                (
-                    message[position] == ' ' ||
-                    message[position] == '\t' ||
-                    message[position] == '\r' ||
-                    message[position] == '\n'
-                )
-            ) {
-                ++position;
-            }
-        };
-
-    const auto readString =
-        [&message, &position](String& value)
-        {
-            if (
-                position >= message.length() ||
-                message[position] != '"'
-            ) {
-                return false;
-            }
-
-            ++position;
-            value = "";
-
-            while (position < message.length()) {
-                const char character =
-                    message[position++];
-
-                if (character == '"') {
-                    return true;
-                }
-
-                if (
-                    character == '\\' ||
-                    static_cast<uint8_t>(character) < 0x20
-                ) {
-                    return false;
-                }
-
-                value += character;
-            }
-
-            return false;
-        };
-
-    skipWhitespace();
-
-    if (
-        position >= message.length() ||
-        message[position++] != '{'
-    ) {
+    const auto skipWhitespace = [&message, &position]() {
+        while (position < message.length() &&
+               (message[position] == ' ' || message[position] == '\t' ||
+                message[position] == '\r' || message[position] == '\n')) ++position;
+    };
+    const auto readString = [&message, &position](String& value) {
+        if (position >= message.length() || message[position++] != '"') return false;
+        value = "";
+        while (position < message.length()) {
+            const char character = message[position++];
+            if (character == '"') return true;
+            if (character == '\\' || static_cast<uint8_t>(character) < 0x20) return false;
+            value += character;
+        }
         return false;
-    }
+    };
 
     skipWhitespace();
-
+    if (position >= message.length() || message[position++] != '{') return false;
+    skipWhitespace();
     String key;
-
-    if (!readString(key)) {
-        return false;
-    }
-
+    if (!readString(key) || key != "type") return false;
+    skipWhitespace();
+    if (position >= message.length() || message[position++] != ':') return false;
+    skipWhitespace();
+    if (!readString(type)) return false;
     skipWhitespace();
 
-    if (
-        position >= message.length() ||
-        message[position++] != ':'
-    ) {
-        return false;
-    }
-
+    // The discriminator is valid both for single-field registration ACKs and
+    // messages carrying further fields such as a measurement sequence.
+    if (position < message.length() && message[position] == ',') return true;
+    if (position >= message.length() || message[position++] != '}') return false;
     skipWhitespace();
-
-    if (
-        key != "type" ||
-        !readString(type)
-    ) {
-        return false;
-    }
-
-    skipWhitespace();
-
-    if (
-        position >= message.length() ||
-        message[position++] != '}'
-    ) {
-        return false;
-    }
-
-    skipWhitespace();
-
     return position == message.length();
 }
 
-bool ServerClient::sendTemperatureMeasurement(
-    float beerTemperature,
-    float ambientTemperature,
-    bool pressureAvailable,
-    float pressurePa
+bool ServerClient::sendMeasurement(
+    const OutboxEntry& measurement,
+    uint32_t nowMs
 )
 {
-    if (
-        !_connected ||
-        !_registered ||
-        _webSocketClient == nullptr
-    ) {
+    if (!_connected || !_registered || _webSocketClient == nullptr) {
         return false;
     }
 
     String message;
-
-    message.reserve(180);
-
-    message += "{\"type\":\"TEMPERATURE_MEASUREMENT\",";
-    message += "\"deviceId\":\"";
-    message += _deviceIdentity.getDeviceId();
-    message += "\",";
-    message += "\"beerTemperature\":";
-    message += String(
-        beerTemperature,
-        1
-    );
-    message += ",";
-    message += "\"ambientTemperature\":";
-    message += String(
-        ambientTemperature,
-        1
-    );
-
-    if (pressureAvailable) {
-        message += ",";
-        message += "\"pressurePa\":";
-        message += String(
-            pressurePa,
-            2
-        );
+    message.reserve(220);
+    if (measurement.type == MeasurementType::TEMPERATURE) {
+        message += "{\"type\":\"TEMPERATURE_MEASUREMENT\",\"deviceId\":\"";
+        message += _deviceIdentity.getDeviceId();
+        message += "\",\"sequence\":";
+        message += String(measurement.sequence);
+        message += ",\"beerTemperature\":";
+        message += String(measurement.payload.temperature.beerTemperature, 1);
+        message += ",\"ambientTemperature\":";
+        message += String(measurement.payload.temperature.ambientTemperature, 1);
+        if (measurement.payload.temperature.pressureAvailable) {
+            message += ",\"pressurePa\":";
+            message += String(measurement.payload.temperature.pressurePa, 2);
+        }
+        message += ",\"measurementAgeSeconds\":";
+        message += String(measurement.ageSeconds(nowMs));
+    } else {
+        message += "{\"type\":\"BUBBLE_ACTIVITY\",\"deviceId\":\"";
+        message += _deviceIdentity.getDeviceId();
+        message += "\",\"sequence\":";
+        message += String(measurement.sequence);
+        message += ",\"bubbleCount\":";
+        message += String(measurement.payload.bubbleActivity.bubbleCount);
+        message += ",\"windowSeconds\":";
+        message += String(measurement.payload.bubbleActivity.windowSeconds);
+        message += ",\"windowEndAgeSeconds\":";
+        message += String(measurement.ageSeconds(nowMs));
     }
-
     message += "}";
-
-    if (
-        sendTextMessage(
-            message,
-            "temperature measurement"
-        )
-    ) {
-        Serial.print(
-            "ServerClient: temperature measurement sent: "
-        );
-
-        Serial.println(
-            message
-        );
-
-        return true;
-    }
-
-    return false;
+    return sendTextMessage(message, "measurement");
 }
 
-bool ServerClient::sendBubbleActivity(
-    uint32_t sequence,
-    uint16_t bubbleCount,
-    uint32_t windowSeconds
-)
+bool ServerClient::takeMeasurementAcknowledgement(uint32_t& sequence)
 {
-    if (
-        !_connected ||
-        !_registered ||
-        _webSocketClient == nullptr
-    ) return false;
-
-    String message;
-    message.reserve(160);
-    message += "{\"type\":\"BUBBLE_ACTIVITY\",";
-    message += "\"deviceId\":\"";
-    message += _deviceIdentity.getDeviceId();
-    message += "\",\"sequence\":";
-    message += String(sequence);
-    message += ",\"bubbleCount\":";
-    message += String(bubbleCount);
-    message += ",\"windowSeconds\":";
-    message += String(windowSeconds);
-    message += "}";
-
-    return sendTextMessage(message, "bubble activity");
-}
-
-bool ServerClient::takeBubbleActivityAcknowledgement(
-    uint32_t& sequence
-)
-{
-    if (!_hasBubbleActivityAcknowledgement) return false;
-    sequence = _bubbleActivityAcknowledgementSequence;
-    _hasBubbleActivityAcknowledgement = false;
+    if (!_hasMeasurementAcknowledgement) return false;
+    sequence = _measurementAcknowledgementSequence;
+    _hasMeasurementAcknowledgement = false;
     return true;
 }
