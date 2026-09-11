@@ -76,6 +76,18 @@ Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidenti
 
 **Offline measurement buffering is not implemented.** Es gibt weder RAM-/Ring-/Flash-Queue noch Replay gespeicherter Messwerte nach einem Reconnect.
 
+### Druckdiagnose
+
+Der DFRobot LWLP5000 / SEN0343 misst den Differenzdruck zwischen Gärbehälter und Umgebung in Pascal. Während einer laufenden `RUNNING`-Session liest die Firmware den Sensor nicht blockierend alle 100 ms (etwa 10 Messwerte pro Sekunde) und gibt bei aktiviertem `PRESSURE_DIAGNOSTICS_ENABLED` eine maschinenlesbare Zeile aus:
+
+```text
+PRESSURE,<millis>,<pressurePa>
+```
+
+Der Zeitstempel basiert auf `millis()`, der Druckwert besitzt zwei Nachkommastellen. Mit `PRESSURE_DIAGNOSTICS_ENABLED = false` wird nur diese serielle Rohdatenausgabe abgeschaltet; die interne Druckmessung und der optionale `pressurePa`-Snapshot einer tatsächlich gesendeten `TEMPERATURE_MEASUREMENT` bleiben erhalten. Die 10-Hz-Rohwerte erzeugen keine zusätzlichen Gateway-Nachrichten. In `IDLE` und `PAUSED` findet weiterhin keine laufende Druckmessreihe statt.
+
+Die Druckwerte werden aktuell **nicht** als Blubbs interpretiert. Eine spätere Bubble Detection wird anhand real aufgezeichneter Druckkurven entwickelt.
+
 ## LEDs
 
 | LED | Pin | Bedeutung |
