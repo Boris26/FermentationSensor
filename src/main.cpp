@@ -137,6 +137,11 @@ bool serverWasRegistered = false;
 
 bool measurementSequenceReady = false;
 
+constexpr char STORAGE_MAINTENANCE_COMMAND[] = "COMPACT_STORAGE";
+char storageMaintenanceCommandBuffer[sizeof(STORAGE_MAINTENANCE_COMMAND)] = {};
+size_t storageMaintenanceCommandLength = 0;
+bool storageMaintenanceCommandOverflow = false;
+
 unsigned long nextDiscoveryAttemptMs = 0;
 
 
@@ -153,48 +158,63 @@ bool factoryReset()
     return flashStorage.factoryReset();
 }
 
-void offerStorageMaintenanceAfterSequenceFailure()
+void announceStorageMaintenanceAvailable()
 {
-    constexpr unsigned long MAINTENANCE_WINDOW_MS = 15000;
-
     Serial.println("STORAGE_MAINTENANCE_AVAILABLE");
-    Serial.println("Send COMPACT_STORAGE within 15 seconds");
+    Serial.println("Send COMPACT_STORAGE at any time while storage error is active");
+}
 
-    const unsigned long startedAtMs = millis();
-    constexpr char MAINTENANCE_COMMAND[] = "COMPACT_STORAGE";
-    char line[sizeof(MAINTENANCE_COMMAND)] = {};
-    size_t lineLength = 0;
-    bool lineOverflow = false;
-    while (millis() - startedAtMs < MAINTENANCE_WINDOW_MS) {
-        while (Serial.available()) {
-            const char character = static_cast<char>(Serial.read());
-            if (character == '\r') continue;
-            if (character != '\n') {
-                if (lineLength < sizeof(line) - 1) {
-                    line[lineLength++] = character;
-                    line[lineLength] = '\0';
-                } else {
-                    lineOverflow = true;
-                }
-                continue;
-            }
+void resetStorageMaintenanceCommandBuffer()
+{
+    storageMaintenanceCommandLength = 0;
+    storageMaintenanceCommandBuffer[0] = '\0';
+    storageMaintenanceCommandOverflow = false;
+}
 
-            // Only an exact complete line triggers maintenance. Any other
-            // input is discarded while the remainder of the window stays open.
-            if (!lineOverflow && strcmp(line, MAINTENANCE_COMMAND) == 0) {
-                if (storageMaintenance.compactPersistentStorage()) {
-                    Serial.println("STORAGE_MAINTENANCE_RESTARTING");
-                    Serial.flush();
-                    delay(50);
-                    NVIC_SystemReset();
-                }
-                return;
+void updateStorageMaintenanceCommand()
+{
+    if (measurementSequenceReady) return;
+
+    while (Serial.available()) {
+        const char character = static_cast<char>(Serial.read());
+
+        if (character == '\r') continue;
+
+        if (character != '\n') {
+            if (storageMaintenanceCommandLength <
+                sizeof(storageMaintenanceCommandBuffer) - 1) {
+                storageMaintenanceCommandBuffer[
+                    storageMaintenanceCommandLength++
+                ] = character;
+                storageMaintenanceCommandBuffer[
+                    storageMaintenanceCommandLength
+                ] = '\0';
             }
-            lineLength = 0;
-            line[0] = '\0';
-            lineOverflow = false;
+            else {
+                storageMaintenanceCommandOverflow = true;
+            }
+            continue;
         }
-        delay(10);
+
+        const bool commandMatches =
+            !storageMaintenanceCommandOverflow &&
+            strcmp(
+                storageMaintenanceCommandBuffer,
+                STORAGE_MAINTENANCE_COMMAND
+            ) == 0;
+
+        resetStorageMaintenanceCommandBuffer();
+
+        if (!commandMatches) continue;
+
+        if (storageMaintenance.compactPersistentStorage()) {
+            Serial.println("STORAGE_MAINTENANCE_RESTARTING");
+            Serial.flush();
+            delay(50);
+            NVIC_SystemReset();
+        }
+
+        return;
     }
 }
 
@@ -733,10 +753,7 @@ void setup()
     if (!measurementSequenceReady) {
         Serial.println("MEASUREMENT_SEQUENCE_INITIALIZATION_FAILED");
         errorLed.on();
-        // No sensors, WiFi, gateway, or measurement session have started yet.
-        // Timeout, unrelated input, or maintenance failure all leave sequence
-        // allocation disabled and continue booting in fail-closed mode.
-        offerStorageMaintenanceAfterSequenceFailure();
+        announceStorageMaintenanceAvailable();
     }
 
 
@@ -808,6 +825,12 @@ void setup()
 
 void loop()
 {
+    // Persistent storage maintenance is available at any time while the
+    // sequence allocator is fail-closed. An accepted command performs the
+    // maintenance synchronously and restarts the controller on success.
+    updateStorageMaintenanceCommand();
+
+
     // Input
     measurementButton.update();
 
