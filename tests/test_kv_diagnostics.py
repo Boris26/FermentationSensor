@@ -21,6 +21,7 @@ class KvDiagnosticsTests(unittest.TestCase):
         self.assertIn('Serial.print("KV_ENTRY,")', diagnostic)
         self.assertIn('Serial.print("KV_ENTRY_COUNT,")', diagnostic)
         self.assertIn('Serial.print("KV_LIVE_DATA_BYTES,")', diagnostic)
+        self.assertNotIn("MBED_ERROR_ITEM_NOT_FOUND", diagnostic)
 
     def test_sequence_initialization_failure_is_explicit_and_gates_enqueues(self):
         self.assertIn(

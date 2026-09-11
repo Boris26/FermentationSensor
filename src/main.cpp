@@ -721,6 +721,12 @@ void setup()
     // Persistent flash storage
     flashStorage.begin();
 
+    // Explicit serial maintenance only; never automatic. Failure is fail closed.
+    if (!runRequestedStorageMaintenance()) {
+        errorLed.on();
+        while (true) delay(1000);
+    }
+
 
     // Device identity
     deviceIdentity.begin();

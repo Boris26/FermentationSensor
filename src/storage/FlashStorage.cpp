@@ -373,8 +373,7 @@ void FlashStorage::debugPrintEntries()
     }
 
     char key[KV_KEY_BUFFER_SIZE] = {};
-    int nextResult = KV_SUCCESS;
-    while ((nextResult = kv_iterator_next(iterator, key, sizeof(key))) == KV_SUCCESS) {
+    while (kv_iterator_next(iterator, key, sizeof(key)) == KV_SUCCESS) {
         kv_info_t info = {};
         const int infoResult = kv_get_info(key, &info);
         if (infoResult != KV_SUCCESS) {
@@ -396,10 +395,6 @@ void FlashStorage::debugPrintEntries()
     }
 
     const int closeResult = kv_iterator_close(iterator);
-    if (nextResult != MBED_ERROR_ITEM_NOT_FOUND) {
-        Serial.print("KV_ITERATOR_NEXT_FAILED,");
-        Serial.println(nextResult);
-    }
     if (closeResult != KV_SUCCESS) {
         Serial.print("KV_ITERATOR_CLOSE_FAILED,");
         Serial.println(closeResult);
