@@ -1,5 +1,13 @@
 #include "network/TemperatureTransmissionPolicy.h"
 
+void TemperatureTransmissionPolicy::resetRuntimeState()
+{
+    _lastQueuedBeerTemperature = 0.0f;
+    _lastQueuedAmbientTemperature = 0.0f;
+    _hasQueuedMeasurement = false;
+    _currentMeasurementRequested = false;
+}
+
 #include <cmath>
 
 

@@ -109,6 +109,47 @@ Die erste Initialisierung beginnt absichtlich bei `0x01000000` (16.777.216). Die
 
 Die Outbox selbst bleibt ausschließlich im RAM. Ein Neustart verliert somit weiterhin unbestätigte Messwerte, deren kompletter reservierter Sequence-Bereich wird danach aber nicht wiederverwendet. Schlägt die Flash-Reservierung fehl oder ist der gespeicherte Zustand ungültig, arbeitet die Vergabe geschlossen: Es gelangt keine Messung mit einer unsicheren Sequenz in die Outbox, und `MEASUREMENT_SEQUENCE_RESERVATION_FAILED` wird seriell gemeldet. Eine Erschöpfung des sicheren `uint32_t`-Raums führt ebenfalls nicht zu Wrap-around oder Recycling, sondern stoppt weitere Vergaben.
 
+### Explizite Storage-Maintenance
+
+Ein durch obsolete Log-Records gefüllter TDBStore kann ausschließlich auf
+ausdrücklichen Benutzerwunsch kompakt neu aufgebaut werden. Nur wenn die
+persistente Sequence-Reservierung beim Boot fehlschlägt, meldet die Firmware
+`STORAGE_MAINTENANCE_AVAILABLE` und wartet bis zu 15 Sekunden auf die vollständige,
+exakte serielle Zeile `COMPACT_STORAGE`. Andere Eingaben und ein Timeout lösen
+keine Wartung aus. Sensoren, Messsession, WLAN und Gateway sind während dieses
+Fensters noch nicht gestartet. Danach bootet das Gerät fail-closed weiter: Die
+Sequence-Vergabe bleibt deaktiviert und die rote Storage-LED dauerhaft an. Ein
+normaler Boot mit erfolgreicher Sequence-Reservierung bietet oder startet die
+Wartung **niemals**.
+
+Vor `kv_reset("/kv/")` liest und validiert die Wartung `device_config`, den
+nächsten sicheren Block aus `measurement_sequence_v1` sowie alle vorhandenen
+Records `wifi_config`, `temperature_config` und `gateway_cache` vollständig in
+getrennte RAM-Strukturen. Ein fehlender Pflichtrecord oder ein ungültiger bzw.
+nicht lesbarer vorhandener Record bricht vor dem Reset ab. Der interne
+TDBStore-Key `/kv/TDBS` ist kein Anwendungszustand und wird weder gesichert noch
+wiederhergestellt. Nach Reset und Restore werden Größe, Semantik und sämtliche
+Bytes erneut geprüft. Erst danach initialisiert der normale Allocator und
+reserviert den gesicherten nächsten freien 65.536er-Block; eine Sequenz wird
+weder auf den Initialwert zurückgesetzt noch erneut verwendet. Jeder Fehler ist
+fail-closed und verhindert den Messbetrieb.
+
+**Stromausfallwarnung:** Backup in RAM, `kv_reset()` und Restore sind ohne einen
+zweiten persistenten Speicherbereich nicht vollständig transaktions- oder
+stromausfallsicher. Ein Stromverlust nach dem Reset kann Identität,
+WLAN-Konfiguration oder Sequence-State zerstören. Die Wartung darf deshalb nur
+bewusst in einem Wartungsfenster mit stabiler Versorgung ausgeführt werden. Die
+Diagnose meldet die jeweilige Phase, aber niemals UUID, SSID oder Passwort.
+Nach vollständig erfolgreicher Verifikation führt die Firmware über
+`NVIC_SystemReset()` einen kontrollierten Cortex-M-Neustart aus. Damit wird der
+zuvor fehlgeschlagene Allocator nicht im selben Objektzustand wiederverwendet;
+der folgende Boot reserviert den erhaltenen nächsten sicheren Block regulär.
+
+Die APIs bleiben bewusst getrennt: `resetRuntimeMeasurementState()` leert nur
+flüchtige Outbox-/Senderegel-Zustände, `compactPersistentStorage()` baut den
+KVStore unter Erhalt des Anwendungszustands neu auf, und `factoryReset()` löscht
+den persistenten Namespace. Compaction ersetzt keinen Factory Reset.
+
 ## WLAN-Provisioning
 
 Ohne gespeicherte WLAN-Konfiguration startet das Gerät den Access Point `FERM-01-Setup`. Die lokale Setup-Seite überträgt SSID und Passwort; dies ist ausschließlich WLAN-Provisioning. Nach erfolgreicher Provisionierung wird kein Discovery-, Bootstrap- oder HTTP-Anwendungsserver betrieben.

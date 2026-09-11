@@ -281,6 +281,12 @@ bool FlashStorage::exists(
 
 bool FlashStorage::clearAll()
 {
+    return factoryReset();
+}
+
+
+bool FlashStorage::factoryReset()
+{
     Serial.println(
         "FlashStorage: clearing complete KVStore..."
     );
@@ -311,6 +317,12 @@ bool FlashStorage::clearAll()
 
 
     return true;
+}
+
+
+bool FlashStorage::resetForMaintenance()
+{
+    return kv_reset(KV_PREFIX) == KV_SUCCESS;
 }
 
 

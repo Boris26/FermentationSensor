@@ -20,6 +20,7 @@ public:
 
     void requestCurrentMeasurement();
     bool isCurrentMeasurementRequested() const;
+    void resetRuntimeState();
 
 private:
     float _sendDeltaC;

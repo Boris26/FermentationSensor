@@ -14,6 +14,18 @@ MeasurementOutbox::MeasurementOutbox(
 {
 }
 
+void MeasurementOutbox::resetRuntimeState()
+{
+    _head = 0;
+    _count = 0;
+    _lastSentAtMs = 0;
+    _droppedCount = 0;
+    _lastDroppedType = MeasurementType::TEMPERATURE;
+    _lastDroppedSequence = 0;
+    _headHasBeenSent = false;
+    _sendDue = false;
+}
+
 bool MeasurementOutbox::enqueueTemperature(
     float beerTemperature,
     float ambientTemperature,
