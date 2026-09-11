@@ -689,6 +689,11 @@ bool ServerClient::sendMeasurement(
         message += String(measurement.payload.bubbleActivity.bubbleCount);
         message += ",\"windowSeconds\":";
         message += String(measurement.payload.bubbleActivity.windowSeconds);
+        message += ",\"averagePressureDeltaPa\":";
+        message += String(
+            measurement.payload.bubbleActivity.averagePressureDeltaPa,
+            2
+        );
         message += ",\"windowEndAgeSeconds\":";
         message += String(measurement.ageSeconds(nowMs));
     }

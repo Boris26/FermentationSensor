@@ -22,6 +22,12 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
         harness.write_text(textwrap.dedent(r"""
             #include "sensors/BubbleActivityAggregator.h"
             #include <cassert>
+            #include <cmath>
+
+            bool closeTo(float actual, float expected)
+            {
+                return std::fabs(actual - expected) < 0.0001f;
+            }
 
             int main()
             {
@@ -30,6 +36,7 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
                 assert(!windows.hasCompletedWindow());
                 windows.update(999999);
                 windows.recordBubble();
+                windows.recordPressureDelta(100.0f);
                 assert(!windows.hasCompletedWindow());
 
                 // Calibration completion is represented by explicitly starting
@@ -38,6 +45,7 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
                 assert(windows.isActive());
                 assert(!windows.isPaused());
                 windows.update(60999);
+                windows.recordPressureDelta(1.0f);
                 assert(!windows.hasCompletedWindow());
                 windows.recordBubble();
                 windows.update(61000);
@@ -46,6 +54,8 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
                 assert(first.startedAtMs == 1000);
                 assert(first.durationMs == 60000);
                 assert(first.bubbleCount == 1);
+                assert(first.pressureSampleCount == 1);
+                assert(closeTo(first.averagePressureDeltaPa, 1.0f));
                 assert(&first == &windows.completedWindow());
                 assert(windows.hasCompletedWindow());
                 windows.acknowledgeCompletedWindow();
@@ -54,37 +64,52 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
                 // Completion immediately starts another window. An event
                 // recognized on the boundary is assigned exactly once to it.
                 windows.recordBubble();
+                windows.recordPressureDelta(1.0f);
+                windows.recordPressureDelta(2.0f);
+                windows.recordPressureDelta(3.0f);
                 windows.update(121000);
                 BubbleActivityWindow second = windows.completedWindow();
                 assert(second.startedAtMs == 61000);
                 assert(second.bubbleCount == 1);
+                assert(second.pressureSampleCount == 3);
+                assert(closeTo(second.averagePressureDeltaPa, 2.0f));
                 windows.acknowledgeCompletedWindow();
 
                 // Multiple events are counted, and empty windows are retained.
                 windows.recordBubble();
                 windows.recordBubble();
                 windows.recordBubble();
+                windows.recordPressureDelta(-3.0f);
+                windows.recordPressureDelta(1.0f);
                 windows.update(181000);
                 assert(windows.completedWindow().bubbleCount == 3);
+                assert(closeTo(windows.completedWindow().averagePressureDeltaPa, -1.0f));
                 windows.acknowledgeCompletedWindow();
+                windows.recordPressureDelta(0.5f);
                 windows.update(241000);
                 assert(windows.hasCompletedWindow());
                 assert(windows.completedWindow().bubbleCount == 0);
+                assert(closeTo(windows.completedWindow().averagePressureDeltaPa, 0.5f));
                 windows.acknowledgeCompletedWindow();
 
                 // Only active RUNNING time advances the window.
                 windows.update(271000);
                 windows.recordBubble();
+                windows.recordPressureDelta(2.0f);
                 windows.pause(271000);
                 windows.update(291000);
                 windows.recordBubble();
+                windows.recordPressureDelta(100.0f);
                 assert(!windows.hasCompletedWindow());
                 windows.resume(291000);
+                windows.recordPressureDelta(4.0f);
                 windows.update(320999);
                 assert(!windows.hasCompletedWindow());
                 windows.update(321000);
                 BubbleActivityWindow paused = windows.completedWindow();
                 assert(paused.bubbleCount == 1);
+                assert(paused.pressureSampleCount == 2);
+                assert(closeTo(paused.averagePressureDeltaPa, 3.0f));
                 windows.acknowledgeCompletedWindow();
 
                 // A fixed single slot is deterministic: latest completed wins.
@@ -93,6 +118,7 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
                 BubbleActivityWindow latest = windows.completedWindow();
                 assert(latest.startedAtMs == 381000);
                 assert(latest.bubbleCount == 0);
+                assert(latest.pressureSampleCount == 0);
                 windows.acknowledgeCompletedWindow();
 
                 // Unsigned subtraction preserves elapsed-time behaviour over wrap.
@@ -129,6 +155,8 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
         self.assertIn("_bubbleActivityAggregator.start(now);", PRESSURE)
         self.assertIn("_bubbleActivityAggregator.update(now);", PRESSURE)
         self.assertIn("_bubbleActivityAggregator.recordBubble();", PRESSURE)
+        self.assertIn("_bubbleActivityAggregator.recordPressureDelta(", PRESSURE)
+        self.assertIn("_bubbleDetector.calibratedBaselinePa()", PRESSURE)
         self.assertIn('Serial.print("BUBBLE_WINDOW,");', PRESSURE)
         diagnostics = PRESSURE[
             PRESSURE.index('Serial.print("BUBBLE_WINDOW,");'):

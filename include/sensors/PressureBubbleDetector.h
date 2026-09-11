@@ -38,6 +38,7 @@ public:
     bool isBubbleActive() const;
 
     float baselinePa() const;
+    float calibratedBaselinePa() const;
     float noisePa() const;
     float triggerDeltaPa() const;
     float releaseDeltaPa() const;
@@ -73,6 +74,7 @@ private:
     unsigned long _pausedAtMs = 0;
 
     float _baselinePa = 0.0f;
+    float _calibratedBaselinePa = 0.0f;
     float _noisePa = 0.0f;
     float _triggerDeltaPa = 0.0f;
     float _releaseDeltaPa = 0.0f;

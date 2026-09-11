@@ -8,6 +8,8 @@ struct BubbleActivityWindow
     unsigned long durationMs = 0;
     unsigned long completedAtMs = 0;
     uint16_t bubbleCount = 0;
+    float averagePressureDeltaPa = 0.0f;
+    uint32_t pressureSampleCount = 0;
 };
 
 // Aggregates technical bubble events using active RUNNING time only. A fixed
@@ -23,6 +25,7 @@ public:
     void resume(unsigned long nowMs);
     void reset();
     void recordBubble();
+    void recordPressureDelta(float pressureDeltaPa);
 
     bool isActive() const;
     bool isPaused() const;
@@ -39,6 +42,8 @@ private:
     BubbleActivityWindow _completedWindow;
     unsigned long _activeElapsedMs = 0;
     unsigned long _lastUpdateMs = 0;
+    float _pressureDeltaSum = 0.0f;
+    uint32_t _pressureSampleCount = 0;
     bool _active = false;
     bool _paused = true;
     bool _hasCompletedWindow = false;

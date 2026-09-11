@@ -36,6 +36,8 @@ class MeasurementOutboxTests(unittest.TestCase):
                 zeroWindow.durationMs = 60000;
                 zeroWindow.completedAtMs = 61000;
                 zeroWindow.bubbleCount = 0;
+                zeroWindow.averagePressureDeltaPa = -1.25f;
+                zeroWindow.pressureSampleCount = 600;
                 assert(outbox.enqueueBubbleActivity(zeroWindow));
 
                 assert(outbox.size() == 2);
@@ -65,9 +67,11 @@ class MeasurementOutboxTests(unittest.TestCase):
                 assert(outbox.front().sequence == 101);
                 assert(outbox.front().payload.bubbleActivity.bubbleCount == 0);
                 assert(outbox.front().payload.bubbleActivity.windowSeconds == 60);
+                assert(outbox.front().payload.bubbleActivity.averagePressureDeltaPa == -1.25f);
                 assert(outbox.front().ageSeconds(186000) == 125);
                 assert(outbox.shouldSend(true, true, 5101));
                 outbox.recordSuccessfulSend(5101);
+                assert(outbox.front().payload.bubbleActivity.averagePressureDeltaPa == -1.25f);
                 outbox.onTransportUnavailable();
                 assert(outbox.front().sequence == 101);
                 assert(outbox.shouldSend(true, true, 5102));
@@ -87,6 +91,11 @@ class MeasurementOutboxTests(unittest.TestCase):
                 assert(!outbox.acknowledge(droppedSequence));
                 assert(outbox.front().sequence == droppedSequence + 1);
                 assert(outbox.back().type == MeasurementType::BUBBLE_ACTIVITY);
+                assert(outbox.back().payload.bubbleActivity.averagePressureDeltaPa == -1.25f);
+
+                BubbleActivityWindow missingPressure;
+                missingPressure.durationMs = 60000;
+                assert(!outbox.enqueueBubbleActivity(missingPressure));
 
                 // Unsigned subtraction naturally handles millis() rollover.
                 OutboxEntry wrapped = {};
@@ -137,6 +146,7 @@ class MeasurementOutboxTests(unittest.TestCase):
         for field in (
             "TEMPERATURE_MEASUREMENT", "BUBBLE_ACTIVITY", "sequence",
             "measurementAgeSeconds", "windowEndAgeSeconds",
+            "averagePressureDeltaPa",
         ):
             self.assertIn(field, sender)
         self.assertIn("measurement.ageSeconds(nowMs)", sender)
@@ -154,7 +164,8 @@ class MeasurementOutboxTests(unittest.TestCase):
         bubble = (
             '{"type":"BUBBLE_ACTIVITY","deviceId":"' + device_id +
             '","sequence":4294967295,"bubbleCount":65535,'
-            '"windowSeconds":4294967,"windowEndAgeSeconds":4294967}'
+            '"windowSeconds":4294967,"averagePressureDeltaPa":-500.00,'
+            '"windowEndAgeSeconds":4294967}'
         )
         self.assertLessEqual(len(temperature), 256)
         self.assertLessEqual(len(bubble), 256)
