@@ -124,13 +124,19 @@ BUBBLE,<startMs>,<durationMs>,<peakDeltaPa>
 
 Direkt nach erfolgreicher Kalibrierung startet außerdem ein technisches Bubble-Aktivitätsfenster. Alle gültigen `BubbleEvent`s werden in festen 60-Sekunden-Fenstern gezählt. Die Fensterdauer basiert ausschließlich auf aktiver `RUNNING`-Zeit: Während `PAUSED` stehen Zeit und Zähler, bei Resume läuft dasselbe Fenster mit seiner verbleibenden aktiven Zeit weiter. Auch Fenster ohne erkanntes Ereignis werden mit `bubbleCount = 0` abgeschlossen. Direkt nach jedem Abschluss startet das nächste Fenster.
 
-Ein Ereignis wird dem Fenster zugeordnet, in dem der Detektor es beim Release als gültig abschließt. Die Fenstergrenze wird vor der Ereigniszuordnung verarbeitet; ein exakt auf der Grenze abgeschlossenes Ereignis zählt deshalb ausschließlich zum neuen Fenster. Der Sensor hält nur das laufende und einen abgeschlossenen Datensatz (`startedAtMs`, `durationMs`, `completedAtMs`, `bubbleCount`). `completedWindow()` darf diesen Datensatz beliebig oft lesen, ohne ihn zu konsumieren; erst nach erfolgreicher Kopie in die allgemeine Outbox bestätigt `acknowledgeCompletedWindow()` die Verarbeitung. Die serielle Diagnose liest nur und bestätigt nicht. Bei aktivierter Druckdiagnose wird jeder neue Abschluss einmal ausgegeben, einschließlich Null-Fenstern:
+Ein Ereignis wird dem Fenster zugeordnet, in dem der Detektor es beim Release als gültig abschließt. Die Fenstergrenze wird vor der Ereigniszuordnung verarbeitet; ein exakt auf der Grenze abgeschlossenes Ereignis zählt deshalb ausschließlich zum neuen Fenster. Dasselbe bereits gelesene Drucksample wird zusätzlich als Differenz zur bei der Kalibrierung festgestellten Baseline in das aktive Fenster aufgenommen. Aus Summe und Anzahl dieser Deltas entsteht beim Fensterabschluss `averagePressureDeltaPa`; die langsame Baseline-Nachführung der Bubble-Erkennung verändert diese feste Kalibrierungsreferenz nicht.
+
+`bubbleCount` und `averagePressureDeltaPa` besitzen damit exakt dieselbe Zeitbasis. Nur aktive `RUNNING`-Zeit und die in dieser Zeit vorhandenen Samples gehen ein; `PAUSED` fügt weder Fensterzeit noch Drucksamples hinzu und Summe sowie Anzahl bleiben für Resume erhalten. Es wird keine Rohdruckhistorie oder dynamische Sample-Liste gespeichert, sondern ausschließlich laufende Summe und Anzahl. Ebenso werden keine Min-/Max-Werte ermittelt. Die Kalibrierungsphase erzeugt weiterhin keine Activity Windows. Sollte ein Fenster wider Erwarten kein gültiges Drucksample enthalten, gilt sein Mittelwert als nicht verfügbar und das Fenster wird nicht als gemessener 0-Pa-Wert in die Outbox übernommen.
+
+Der Sensor hält nur das laufende und einen abgeschlossenen Datensatz (`startedAtMs`, `durationMs`, `completedAtMs`, `bubbleCount`, `averagePressureDeltaPa`, `pressureSampleCount`). `completedWindow()` darf diesen Datensatz beliebig oft lesen, ohne ihn zu konsumieren; erst nach erfolgreicher Kopie in die allgemeine Outbox bestätigt `acknowledgeCompletedWindow()` die Verarbeitung. Die serielle Diagnose liest nur und bestätigt nicht. Bei aktivierter Druckdiagnose wird jeder neue Abschluss einmal ausgegeben, einschließlich Null-Bubble-Fenstern:
 
 ```text
-BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>
+BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>,<averagePressureDeltaPa>
 ```
 
-`BubbleActivityWindow` und Bubble Detection sind ausschließlich technische Messdaten. An das Gateway werden nur abgeschlossene Activity Windows einschließlich Null-Fenstern übertragen. Einzelne BubbleEvents, Rohdruck, Baseline, Noise, Triggerwerte und Peaks werden nicht übertragen. Der Sensor bewertet weder Gäraktivität noch Gärfortschritt.
+`BUBBLE_ACTIVITY` enthält neben `bubbleCount` und `windowSeconds` nun `averagePressureDeltaPa`, den mittleren Differenzdruck relativ zur kalibrierten Baseline während desselben Fensters. Der Wert wird beim Enqueue vollständig kopiert und bleibt bei Retries unverändert; lediglich `windowEndAgeSeconds` wird beim Senden erneut aus dem Abschlusszeitpunkt berechnet.
+
+`BubbleActivityWindow` und Bubble Detection sind ausschließlich technische Messdaten. An das Gateway werden nur abgeschlossene Activity Windows einschließlich Null-Bubble-Fenstern übertragen. Einzelne BubbleEvents, Rohdruck, Baseline, Noise, Triggerwerte, Min-/Max-Werte und Peaks werden nicht übertragen. Aus dem technischen Mittelwert wird im Sensor keine fachliche Gärungsinterpretation abgeleitet. Der Sensor bewertet weder Gäraktivität noch Gärfortschritt.
 
 ### Architekturgrenzen der Bubble-Aktivität
 

@@ -66,9 +66,11 @@ class PressureBubbleDetectorTests(unittest.TestCase):
 
                 // Below trigger does not create an event; idle drift tracks slowly.
                 const float baseline = quiet.baselinePa();
+                const float calibratedBaseline = quiet.calibratedBaselinePa();
                 assert(!quiet.processSample(5100, baseline + 0.2f));
                 assert(quiet.totalBubbleCount() == 0);
                 assert(quiet.baselinePa() > baseline);
+                assert(quiet.calibratedBaselinePa() == calibratedBaseline);
 
                 // One released event records start, duration, and peak.
                 assert(!quiet.processSample(5200, quiet.baselinePa() + 0.6f));

@@ -124,6 +124,7 @@ void PressureBubbleDetector::finishCalibration()
     }
 
     _baselinePa = median(_calibrationBlocks, _calibrationBlockCount);
+    _calibratedBaselinePa = _baselinePa;
     _noisePa = median(_calibrationNoiseBlocks, _calibrationBlockCount);
     _triggerDeltaPa = std::max(
         _config.minimumTriggerDeltaPa,
@@ -168,6 +169,10 @@ bool PressureBubbleDetector::isCalibrating() const { return _mode == Mode::CALIB
 bool PressureBubbleDetector::isCalibrated() const { return _mode == Mode::MONITORING; }
 bool PressureBubbleDetector::isBubbleActive() const { return _detectionState == DetectionState::ACTIVE; }
 float PressureBubbleDetector::baselinePa() const { return _baselinePa; }
+float PressureBubbleDetector::calibratedBaselinePa() const
+{
+    return _calibratedBaselinePa;
+}
 float PressureBubbleDetector::noisePa() const { return _noisePa; }
 float PressureBubbleDetector::triggerDeltaPa() const { return _triggerDeltaPa; }
 float PressureBubbleDetector::releaseDeltaPa() const { return _releaseDeltaPa; }

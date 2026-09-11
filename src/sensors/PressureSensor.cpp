@@ -97,6 +97,9 @@ void PressureSensor::update()
         // Advance the window before assigning an event recognized at `now`.
         // Thus a boundary event belongs only to the newly started window.
         _bubbleActivityAggregator.update(now);
+        _bubbleActivityAggregator.recordPressureDelta(
+            _pressurePa - _bubbleDetector.calibratedBaselinePa()
+        );
     }
 
     if (bubbleDetected) _bubbleActivityAggregator.recordBubble();
@@ -145,7 +148,9 @@ void PressureSensor::update()
             Serial.print(',');
             Serial.print(window.durationMs);
             Serial.print(',');
-            Serial.println(window.bubbleCount);
+            Serial.print(window.bubbleCount);
+            Serial.print(',');
+            Serial.println(window.averagePressureDeltaPa, 2);
             _diagnosedWindowRevision =
                 _bubbleActivityAggregator.completedWindowRevision();
         }

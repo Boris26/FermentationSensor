@@ -36,12 +36,18 @@ bool MeasurementOutbox::enqueueBubbleActivity(
     const BubbleActivityWindow& window
 )
 {
+    // A window without a pressure sample has no meaningful average and must not
+    // be represented as a measured 0 Pa value.
+    if (window.pressureSampleCount == 0) return false;
+
     OutboxEntry entry = {};
     entry.type = MeasurementType::BUBBLE_ACTIVITY;
     entry.capturedAtMs = static_cast<uint32_t>(window.completedAtMs);
     entry.payload.bubbleActivity.bubbleCount = window.bubbleCount;
     entry.payload.bubbleActivity.windowSeconds =
         static_cast<uint32_t>(window.durationMs / 1000UL);
+    entry.payload.bubbleActivity.averagePressureDeltaPa =
+        window.averagePressureDeltaPa;
     return enqueue(entry);
 }
 

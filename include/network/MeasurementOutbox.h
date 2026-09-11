@@ -29,6 +29,7 @@ struct BubbleActivityPayload
 {
     uint16_t bubbleCount;
     uint32_t windowSeconds;
+    float averagePressureDeltaPa;
 };
 
 struct OutboxEntry
