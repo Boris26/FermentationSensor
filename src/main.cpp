@@ -9,7 +9,7 @@
 #include "input/MeasurementButton.h"
 
 #include "network/GatewayDiscovery.h"
-#include "network/BubbleActivityTransmission.h"
+#include "network/MeasurementOutbox.h"
 #include "network/NetworkManager.h"
 #include "network/ServerClient.h"
 #include "network/TemperatureTransmissionPolicy.h"
@@ -64,8 +64,8 @@ TemperatureTransmissionPolicy temperatureTransmissionPolicy(
     TEMPERATURE_SEND_DELTA_C
 );
 
-BubbleActivityTransmission bubbleActivityTransmission(
-    BUBBLE_ACTIVITY_ACK_TIMEOUT_MS
+MeasurementOutbox measurementOutbox(
+    MEASUREMENT_ACK_TIMEOUT_MS
 );
 
 
@@ -138,6 +138,38 @@ enum class ErrorState
 
 ErrorState lastErrorState =
     ErrorState::NONE;
+
+
+const char* measurementTypeName(MeasurementType type)
+{
+    return type == MeasurementType::TEMPERATURE
+        ? "TEMPERATURE"
+        : "BUBBLE_ACTIVITY";
+}
+
+
+void printOutboxOverflowIfChanged(uint32_t previousDroppedCount)
+{
+    if (measurementOutbox.droppedCount() == previousDroppedCount) return;
+
+    Serial.print("MEASUREMENT_OUTBOX_OVERFLOW,");
+    Serial.print(measurementTypeName(measurementOutbox.lastDroppedType()));
+    Serial.print(',');
+    Serial.print(measurementOutbox.lastDroppedSequence());
+    Serial.print(',');
+    Serial.println(measurementOutbox.droppedCount());
+}
+
+
+void printMeasurementBuffered(const OutboxEntry& entry)
+{
+    Serial.print("MEASUREMENT_BUFFERED,");
+    Serial.print(measurementTypeName(entry.type));
+    Serial.print(',');
+    Serial.print(entry.sequence);
+    Serial.print(',');
+    Serial.println(measurementOutbox.size());
+}
 
 
 void updateMeasurementLeds()
@@ -444,67 +476,62 @@ void updateServerClient()
     }
 }
 
-void updateBubbleActivityTransmission()
+void updateMeasurementOutbox()
 {
     uint32_t acknowledgedSequence = 0;
-    if (serverClient.takeBubbleActivityAcknowledgement(
+    if (serverClient.takeMeasurementAcknowledgement(
         acknowledgedSequence
     )) {
-        if (bubbleActivityTransmission.acknowledge(
+        if (measurementOutbox.acknowledge(
             acknowledgedSequence
         )) {
-            Serial.print("BUBBLE_ACTIVITY_ACK,");
-            Serial.println(acknowledgedSequence);
+            Serial.print("MEASUREMENT_ACK,");
+            Serial.print(acknowledgedSequence);
+            Serial.print(',');
+            Serial.println(measurementOutbox.size());
         } else {
-            Serial.print("BUBBLE_ACTIVITY_ACK_IGNORED,");
+            Serial.print("MEASUREMENT_ACK_IGNORED,");
             Serial.println(acknowledgedSequence);
         }
     }
 
     if (
-        !bubbleActivityTransmission.hasPending() &&
         pressureSensor.hasCompletedBubbleActivityWindow()
     ) {
-        if (bubbleActivityTransmission.accept(
+        const uint32_t previousDroppedCount = measurementOutbox.droppedCount();
+        if (measurementOutbox.enqueueBubbleActivity(
             pressureSensor.completedBubbleActivityWindow()
         )) {
-            // The transport slot now owns a copy; the aggregator may release
-            // its latest-wins result independently of the gateway ACK.
             pressureSensor.acknowledgeCompletedBubbleActivityWindow();
+            printOutboxOverflowIfChanged(previousDroppedCount);
+            printMeasurementBuffered(measurementOutbox.back());
         }
     }
 
     const bool connected = serverClient.isConnected();
     const bool registered = serverClient.isRegistered();
     if (!connected || !registered) {
-        bubbleActivityTransmission.onTransportUnavailable();
+        measurementOutbox.onTransportUnavailable();
         return;
     }
 
     const unsigned long now = millis();
-    if (!bubbleActivityTransmission.shouldSend(
+    if (!measurementOutbox.shouldSend(
         connected,
         registered,
         now
     )) return;
 
-    const PendingBubbleActivity& pending =
-        bubbleActivityTransmission.pending();
-    const bool retry = bubbleActivityTransmission.isRetry();
-    if (serverClient.sendBubbleActivity(
-        pending.sequence,
-        pending.bubbleCount,
-        pending.windowSeconds
-    )) {
-        bubbleActivityTransmission.recordSuccessfulSend(now);
-        Serial.print(retry
-            ? "BUBBLE_ACTIVITY_RETRY,"
-            : "BUBBLE_ACTIVITY_SENT,");
+    const OutboxEntry& pending = measurementOutbox.front();
+    const bool retry = measurementOutbox.isRetry();
+    if (serverClient.sendMeasurement(pending, static_cast<uint32_t>(now))) {
+        measurementOutbox.recordSuccessfulSend(now);
+        Serial.print(retry ? "MEASUREMENT_RETRY," : "MEASUREMENT_SENT,");
+        Serial.print(measurementTypeName(pending.type));
+        Serial.print(',');
         Serial.print(pending.sequence);
         Serial.print(',');
-        Serial.print(pending.bubbleCount);
-        Serial.print(',');
-        Serial.println(pending.windowSeconds);
+        Serial.println(pending.ageSeconds(static_cast<uint32_t>(now)));
     }
 }
 
@@ -700,14 +727,13 @@ void loop()
     updateSensorInitialization();
 
 
-    // Evaluate each fresh measurement while RUNNING. The policy compares
-    // against values from the last successful WebSocket transmission.
+    // The send policy runs before the generic outbox. Network availability is
+    // deliberately irrelevant here: eligible measurements can wait offline.
     if (
         newTemperatureMeasurement &&
         sessionInitialized &&
         sensorsReady &&
         measurementSession.isRunning() &&
-        serverClient.isRegistered() &&
         temperatureTransmissionPolicy.shouldSend(
             temperatureSensor.getBeerTemperature(),
             temperatureSensor.getAmbientTemperature()
@@ -719,16 +745,34 @@ void loop()
         const float ambientTemperature =
             temperatureSensor.getAmbientTemperature();
 
-        if (serverClient.sendTemperatureMeasurement(
-            beerTemperature,
-            ambientTemperature,
-            pressureSensor.isAvailable(),
-            pressureSensor.getPressurePa()
-        )) {
-            temperatureTransmissionPolicy.recordSuccessfulSend(
+        const bool equivalentReconnectSnapshot =
+            temperatureTransmissionPolicy.isCurrentMeasurementRequested() &&
+            measurementOutbox.backIsEquivalentTemperature(
                 beerTemperature,
                 ambientTemperature
             );
+
+        if (equivalentReconnectSnapshot) {
+            temperatureTransmissionPolicy.recordQueuedMeasurement(
+                beerTemperature,
+                ambientTemperature
+            );
+        } else {
+            const uint32_t previousDroppedCount = measurementOutbox.droppedCount();
+            if (measurementOutbox.enqueueTemperature(
+                beerTemperature,
+                ambientTemperature,
+                pressureSensor.isAvailable(),
+                pressureSensor.getPressurePa(),
+                static_cast<uint32_t>(millis())
+            )) {
+                temperatureTransmissionPolicy.recordQueuedMeasurement(
+                    beerTemperature,
+                    ambientTemperature
+                );
+                printOutboxOverflowIfChanged(previousDroppedCount);
+                printMeasurementBuffered(measurementOutbox.back());
+            }
         }
     }
 
@@ -798,5 +842,5 @@ void loop()
         pressureSensor.update();
     }
 
-    updateBubbleActivityTransmission();
+    updateMeasurementOutbox();
 }

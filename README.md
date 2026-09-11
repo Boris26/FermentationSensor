@@ -36,7 +36,7 @@ Nach jeder neuen WLAN-Verbindung wird ein gültiger Cache zuerst probiert. Funkt
 
 ### Reconnect und Rediscovery
 
-Solange WLAN besteht, versucht `ServerClient` einen verlorenen WebSocket zunächst am aktuellen Runtime-Endpoint mit begrenztem exponentiellem Backoff wieder aufzubauen. Nach drei erfolglosen Zyklen gilt der Endpoint als möglicherweise veraltet und DNS-SD wird erneut ausgeführt. Ist kein Service verfügbar, bleibt die Mess- und Bedienlogik aktiv und Discovery wird nach einem Backoff wiederholt; Messwerte werden nicht offline gepuffert.
+Solange WLAN besteht, versucht `ServerClient` einen verlorenen WebSocket zunächst am aktuellen Runtime-Endpoint mit begrenztem exponentiellem Backoff wieder aufzubauen. Nach drei erfolglosen Zyklen gilt der Endpoint als möglicherweise veraltet und DNS-SD wird erneut ausgeführt. Ist kein Service verfügbar, bleibt die Mess- und Bedienlogik aktiv und Discovery wird nach einem Backoff wiederholt; übertragungswürdige Messwerte werden bis zur Kapazitätsgrenze der RAM-Outbox gepuffert.
 
 Bei WLAN-Verlust werden WebSocket und laufende Discovery gestoppt. Es gibt ohne WLAN keine Gateway-Zugriffe. Nach Wiederherstellung wird der gespeicherte Last-Known-Cache erneut zuerst versucht; ein bloßer WLAN-Ausfall löscht ihn nicht.
 
@@ -48,21 +48,24 @@ Der `ServerClient` verwendet weiterhin `ArduinoHttpClient`/`WebSocketClient` und
 {"type":"REGISTER_SENSOR","deviceId":"<persistente UUID>","deviceName":"<Name>"}
 ```
 
-Messdaten dürfen erst nach `{"type":"REGISTER_SENSOR_ACK"}` gesendet werden. Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff bleiben aktiv.
+Messdaten dürfen erst nach `{"type":"REGISTER_SENSOR_ACK"}` gesendet werden. Sie können jedoch bereits vorher in die gemeinsame Measurement-Outbox eingestellt werden. Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff bleiben aktiv.
 
-Abgeschlossene technische Aktivitätsfenster werden unabhängig von der Temperatur-Sendeschwelle als eigener Nachrichtentyp übertragen. Das gilt ausdrücklich auch für Fenster mit null erkannten Blubbs:
-
-```json
-{"type":"BUBBLE_ACTIVITY","deviceId":"...","sequence":1,"bubbleCount":8,"windowSeconds":60}
-```
-
-Das Gateway bestätigt eine akzeptierte Nachricht mit:
+Die beiden gepufferten Sensor-Nachrichten werden vollständig so übertragen (das Druckfeld der Temperatur ist optional):
 
 ```json
-{"type":"BUBBLE_ACTIVITY_ACK","sequence":1}
+{"type":"TEMPERATURE_MEASUREMENT","deviceId":"...","sequence":100,"beerTemperature":20.4,"ambientTemperature":18.7,"pressurePa":0.08,"measurementAgeSeconds":120}
+{"type":"BUBBLE_ACTIVITY","deviceId":"...","sequence":101,"bubbleCount":8,"windowSeconds":60,"windowEndAgeSeconds":185}
 ```
 
-Erst dieses ACK mit exakt passender `sequence` bestätigt die Übertragung; ein erfolgreicher lokaler WebSocket-Write genügt nicht. Bleibt das ACK länger als fünf Sekunden aus, wird dieselbe Nachricht ohne blockierendes Warten und mit derselben Sequenznummer erneut gesendet. Auch nach einem WebSocket-Abbruch bleibt der Pending-Datensatz erhalten und wird nach Reconnect sowie erneutem `REGISTER_SENSOR_ACK` mit derselben `sequence` wiederholt. Falsche oder veraltete ACK-Sequenzen werden ignoriert.
+Abgeschlossene technische Aktivitätsfenster werden unabhängig von der Temperatur-Sendeschwelle übertragen. Das gilt ausdrücklich auch für Fenster mit null erkannten Blubbs.
+
+Alle Messungstypen erhalten beim Einstellen in die Outbox eine gemeinsame Sequenznummer. Das Gateway bestätigt die jeweils älteste akzeptierte Nachricht mit:
+
+```json
+{"type":"MEASUREMENT_ACK","sequence":1}
+```
+
+Erst dieses ACK mit exakt zur FIFO-Spitze passender `sequence` bestätigt die Übertragung; ein erfolgreicher lokaler WebSocket-Write genügt nicht. Bleibt das ACK länger als fünf Sekunden aus, wird dieselbe Nachricht ohne blockierendes Warten und mit derselben Sequenznummer erneut gesendet. Auch nach einem WebSocket-Abbruch bleibt sie erhalten und wird nach Reconnect sowie erneutem `REGISTER_SENSOR_ACK` wiederholt. Falsche, veraltete oder vorgreifende ACK-Sequenzen werden ignoriert. Der frühere `BUBBLE_ACTIVITY_ACK` wird nicht mehr akzeptiert.
 
 ## Geräteidentität und persistente Daten
 
@@ -84,11 +87,19 @@ Zwei DS18B20-Sensoren messen Bier- und Umgebungstemperatur asynchron. Die Firmwa
 IDLE -> RUNNING -> PAUSED -> RUNNING
 ```
 
-Die beiden Temperaturen werden weiterhin ungefähr alle 60 Sekunden frisch gemessen und lokal aktualisiert. Nur in `RUNNING` werden sie an ein registriertes Gateway übertragen. Die erste gültige gemeinsame Messung wird gesendet; danach erfolgt eine Übertragung erst, wenn sich mindestens eine Temperatur um mindestens 1,0 °C gegenüber ihrem zuletzt **erfolgreich** gesendeten Wert geändert hat. Fehlgeschlagene Sendungen verschieben diesen Vergleichswert nicht und werden deshalb beim nächsten gültigen Messzyklus erneut versucht. Nach jeder neuen erfolgreichen `REGISTER_SENSOR_ACK`-Session wird der nächste aktuelle gültige Temperaturstand unabhängig von der Differenz einmal übertragen; Pause/Resume allein erzwingt keine Übertragung. `pressurePa` kann dabei weiterhin als technischer Snapshot mitlaufen und beeinflusst die Temperatur-Sendeentscheidung nicht.
+Die beiden Temperaturen werden weiterhin ungefähr alle 60 Sekunden frisch gemessen und lokal aktualisiert. Nur in `RUNNING` prüft die Senderegel, ob eine Messung übertragungswürdig ist. Die erste gültige gemeinsame Messung wird eingestellt; danach erst wieder, wenn sich mindestens eine Temperatur um mindestens 1,0 °C gegenüber ihrem zuletzt **erfolgreich eingestellten** Wert geändert hat. Kleine Änderungen summieren sich damit gegen die letzte von der Outbox übernommene Temperatur; dieselbe relevante Messung wird offline nicht jede Minute erneut eingestellt. Nach jeder neuen erfolgreichen `REGISTER_SENSOR_ACK`-Session wird der nächste aktuelle gültige Temperaturstand unabhängig von der Differenz über die Outbox aufgenommen. Entspricht er bereits dem letzten Outbox-Eintrag vom Typ Temperatur, wird kein Duplikat angehängt. Pause/Resume allein erzwingt keinen Snapshot. `pressurePa` wird zum Messzeitpunkt optional mitkopiert und beeinflusst die Senderegel nicht.
 
 Die Gateway-Discovery-/Reconnect-Infrastruktur und die persistente Geräteidentität wurden geprüft: WLAN-Reconnect, Cache-first Gateway-Auswahl, DNS-SD-Fallback, Speichern entdeckter Endpunkte, WebSocket-Backoff, Rediscovery und Registrierung pro Verbindung sind vorhanden. `deviceId` und `deviceName` liegen persistent im Flash; eine neue UUID entsteht nur bei fehlender oder ungültiger Konfiguration.
 
-**Ein vollständiges Offline Measurement Buffering ist nicht implementiert.** Für Bubble Activity existiert genau ein fester Pending-Transport-Slot, der eine Kopie bis zum Gateway-ACK beziehungsweise über einen Reconnect hinweg hält. Daneben bleibt der einzelne abgeschlossene Slot des Aggregators bestehen. Ist der Transport-Slot länger belegt, können daher mehrere neu abgeschlossene, noch nicht übernommene Fenster weiterhin nach „latest wins“ durch das jeweils neueste Fenster ersetzt werden. Es gibt keine RAM-/Ring-/Flash-Queue; diese bewusste Einschränkung wird erst durch einen späteren Offline-Ringbuffer beseitigt. Temperaturmessungen werden weiterhin nicht offline gepuffert.
+## Generic Measurement Outbox
+
+Übertragungswürdige Temperaturmessungen und abgeschlossene Bubble-Activity-Fenster laufen in zeitlicher Reihenfolge durch denselben statisch reservierten Ringbuffer. Beide Typen teilen einen monotonen `uint32_t`-Sequenzzähler; natürlicher Wrap-around ist erlaubt. Die Queue enthält strukturierte Payloads und keine vorbereiteten JSON-Strings. Rohdruckreihen, einzelne BubbleEvents, Baseline, Noise, Trigger-, Kalibrierungs- und Diagnosedaten sowie Registrierungsmeldungen werden nicht gepuffert.
+
+Die Kapazität beträgt 384 Einträge. Ein `OutboxEntry` belegt auf der Zielplattform 28 Byte, die Einträge reservieren somit 10.752 Byte (10,5 KiB) RAM zuzüglich weniger Verwaltungsbytes. Bei überwiegend einem Bubble-Fenster pro Minute reichen 360 Plätze grob für sechs Stunden; zusätzliche Temperaturereignisse reduzieren die effektive Offline-Dauer. Das ist ausdrücklich keine feste Sechs-Stunden-Garantie.
+
+Ausschließlich der älteste Eintrag wird gesendet und bleibt bis zum passenden `MEASUREMENT_ACK` in-flight. Bei jedem Sende- und Retry-Versuch entstehen `measurementAgeSeconds` beziehungsweise `windowEndAgeSeconds` neu aus der vorzeichenlosen Differenz `millis() - capturedAtMs`; dadurch funktionieren die Altersangaben auch über einen `millis()`-Wrap und benötigen weder RTC noch erfundene UTC-Zeitstempel. Bereits gepufferte Daten werden auch in `PAUSED` weiter gesendet und bestätigt, obwohl dort keine neue Druckmessung oder Bubble-Aggregation stattfindet.
+
+Ist der Ringbuffer voll, gilt **DROP OLDEST**: Der älteste Eintrag wird verworfen, ein eventueller In-flight-Zustand zurückgesetzt, der neue Eintrag angehängt und der zentrale Drop-Zähler erhöht. Ein verspätetes ACK des verworfenen Eintrags entfernt keine weiteren Daten. Diese Strategie bedeutet bei langen Ausfällen bewussten Datenverlust zugunsten aktuellerer Messungen. Die Outbox liegt ausschließlich im RAM; ein Neustart verliert alle noch nicht bestätigten Einträge.
 
 ### Druckkalibrierung und technische Blubb-Erkennung
 
@@ -113,7 +124,7 @@ BUBBLE,<startMs>,<durationMs>,<peakDeltaPa>
 
 Direkt nach erfolgreicher Kalibrierung startet außerdem ein technisches Bubble-Aktivitätsfenster. Alle gültigen `BubbleEvent`s werden in festen 60-Sekunden-Fenstern gezählt. Die Fensterdauer basiert ausschließlich auf aktiver `RUNNING`-Zeit: Während `PAUSED` stehen Zeit und Zähler, bei Resume läuft dasselbe Fenster mit seiner verbleibenden aktiven Zeit weiter. Auch Fenster ohne erkanntes Ereignis werden mit `bubbleCount = 0` abgeschlossen. Direkt nach jedem Abschluss startet das nächste Fenster.
 
-Ein Ereignis wird dem Fenster zugeordnet, in dem der Detektor es beim Release als gültig abschließt. Die Fenstergrenze wird vor der Ereigniszuordnung verarbeitet; ein exakt auf der Grenze abgeschlossenes Ereignis zählt deshalb ausschließlich zum neuen Fenster. Der Sensor hält nur das laufende und einen abgeschlossenen Datensatz (`startedAtMs`, `durationMs`, `bubbleCount`). `completedWindow()` darf diesen Datensatz beliebig oft lesen, ohne ihn zu konsumieren; erst `acknowledgeCompletedWindow()` bestätigt die erfolgreiche Verarbeitung. Die serielle Diagnose liest nur und bestätigt nicht. Wird der einzelne Ergebnis-Slot vor einem weiteren Abschluss nicht bestätigt, ersetzt das neueste Ergebnis deterministisch das ältere („latest completed window wins“); es gibt weder eine wachsende Historie noch einen Offline-Puffer. Bei aktivierter Druckdiagnose wird jeder neue Abschluss einmal ausgegeben, einschließlich Null-Fenstern:
+Ein Ereignis wird dem Fenster zugeordnet, in dem der Detektor es beim Release als gültig abschließt. Die Fenstergrenze wird vor der Ereigniszuordnung verarbeitet; ein exakt auf der Grenze abgeschlossenes Ereignis zählt deshalb ausschließlich zum neuen Fenster. Der Sensor hält nur das laufende und einen abgeschlossenen Datensatz (`startedAtMs`, `durationMs`, `completedAtMs`, `bubbleCount`). `completedWindow()` darf diesen Datensatz beliebig oft lesen, ohne ihn zu konsumieren; erst nach erfolgreicher Kopie in die allgemeine Outbox bestätigt `acknowledgeCompletedWindow()` die Verarbeitung. Die serielle Diagnose liest nur und bestätigt nicht. Bei aktivierter Druckdiagnose wird jeder neue Abschluss einmal ausgegeben, einschließlich Null-Fenstern:
 
 ```text
 BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>
@@ -128,7 +139,7 @@ BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>
 - **BeerDataStore / Backend:** übernimmt später Speicherung und fachliche Auswertung.
 - **UI:** übernimmt später die Anzeige.
 
-Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“ oder „Gärung beendet“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Plato-Auswertung, Persistenz und vollständige Offline-Pufferung bleiben bewusst außerhalb dieser Firmware-Erweiterung.
+Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung aktiv“, „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“, „Gärung beendet“ oder „Plato stabil“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Fachliche Auswertung und Flash-Persistenz der Outbox bleiben bewusst außerhalb dieser Firmware-Erweiterung.
 
 ## LEDs
 
@@ -156,4 +167,4 @@ Abhängigkeiten: WiFiNINA, ArduinoHttpClient, OneWire und DallasTemperature. DNS
 
 ## Bewusste fachliche Grenzen
 
-Nicht implementiert sind Offline Queue/Replay, fachliche Bubble-Auswertung, Plato-, Alkohol- oder Vergärungsberechnung sowie eine Bewertung des Gärverlaufs. Der Sensor kennt weder `beerId` noch ein Datenbankmodell oder einen fachlichen Gärstatus.
+Nicht implementiert sind flash-persistentes Offline-Replay, fachliche Bubble-Auswertung, Plato-, Alkohol- oder Vergärungsberechnung sowie eine Bewertung des Gärverlaufs. Der Sensor kennt weder `beerId` noch ein Datenbankmodell oder einen fachlichen Gärstatus.

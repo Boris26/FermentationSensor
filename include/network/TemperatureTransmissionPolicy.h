@@ -13,17 +13,18 @@ public:
         float ambientTemperature
     ) const;
 
-    void recordSuccessfulSend(
+    void recordQueuedMeasurement(
         float beerTemperature,
         float ambientTemperature
     );
 
     void requestCurrentMeasurement();
+    bool isCurrentMeasurementRequested() const;
 
 private:
     float _sendDeltaC;
-    float _lastSentBeerTemperature = 0.0f;
-    float _lastSentAmbientTemperature = 0.0f;
-    bool _hasSuccessfulSend = false;
+    float _lastQueuedBeerTemperature = 0.0f;
+    float _lastQueuedAmbientTemperature = 0.0f;
+    bool _hasQueuedMeasurement = false;
     bool _currentMeasurementRequested = false;
 };
