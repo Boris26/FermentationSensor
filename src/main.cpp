@@ -28,11 +28,13 @@
 #include "storage/FlashStorage.h"
 #include "storage/GatewayEndpointStore.h"
 #include "storage/MeasurementSequenceStore.h"
+#include "storage/StorageMaintenance.h"
 #include "storage/TemperatureSensorStore.h"
 #include "storage/WifiCredentialStore.h"
 
 
 FlashStorage flashStorage;
+StorageMaintenance storageMaintenance(flashStorage);
 
 
 DeviceIdentity deviceIdentity(
@@ -138,6 +140,28 @@ unsigned long nextDiscoveryAttemptMs = 0;
 
 
 unsigned long lastSensorCheckMs = 0;
+
+void resetRuntimeMeasurementState()
+{
+    measurementOutbox.resetRuntimeState();
+    temperatureTransmissionPolicy.resetRuntimeState();
+}
+
+bool factoryReset()
+{
+    return flashStorage.factoryReset();
+}
+
+bool runRequestedStorageMaintenance()
+{
+    if (!Serial.available()) return true;
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    if (command != "COMPACT_STORAGE") return true;
+
+    // Measurement, networking, and sequence allocation have not started yet.
+    return storageMaintenance.compactPersistentStorage();
+}
 
 
 enum class ErrorState
@@ -661,6 +685,12 @@ void setup()
 
     // Persistent flash storage
     flashStorage.begin();
+
+    // Explicit serial maintenance only; never automatic. Failure is fail closed.
+    if (!runRequestedStorageMaintenance()) {
+        errorLed.on();
+        while (true) delay(1000);
+    }
 
 
     // Device identity

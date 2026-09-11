@@ -82,6 +82,7 @@ public:
     void recordSuccessfulSend(uint32_t nowMs);
     void onTransportUnavailable();
     bool acknowledge(uint32_t sequence);
+    void resetRuntimeState();
 
     uint32_t droppedCount() const;
     MeasurementType lastDroppedType() const;
