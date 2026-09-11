@@ -49,37 +49,51 @@ class StorageMaintenanceArchitectureTests(unittest.TestCase):
         self.assertIn("flashStorage.factoryReset()", factory)
         self.assertNotIn("factoryReset", maintenance)
 
-    def test_no_command_or_timeout_does_not_run_maintenance(self):
-        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
-            "enum class ErrorState", 1)[0]
-        self.assertIn("while (millis() - startedAtMs < MAINTENANCE_WINDOW_MS)", offer)
-        self.assertNotIn("compactPersistentStorage()", offer.split("while (Serial.available())", 1)[0])
+    def test_storage_command_is_only_processed_while_sequence_storage_failed(self):
+        update = MAIN.split("void updateStorageMaintenanceCommand()", 1)[1].split(
+            "enum class ErrorState", 1
+        )[0]
+        self.assertIn("if (measurementSequenceReady) return;", update)
+        self.assertIn("while (Serial.available())", update)
+        self.assertIn("strcmp(", update)
+        self.assertIn("STORAGE_MAINTENANCE_COMMAND", update)
 
     def test_wrong_complete_command_is_ignored(self):
-        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
-            "enum class ErrorState", 1)[0]
-        self.assertIn("strcmp(line, MAINTENANCE_COMMAND) == 0", offer)
-        self.assertIn("lineOverflow = false;", offer)
+        update = MAIN.split("void updateStorageMaintenanceCommand()", 1)[1].split(
+            "enum class ErrorState", 1
+        )[0]
+        self.assertIn("if (!commandMatches) continue;", update)
+        self.assertIn("resetStorageMaintenanceCommandBuffer();", update)
 
     def test_compact_command_runs_maintenance_exactly_once(self):
-        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
-            "enum class ErrorState", 1)[0]
-        self.assertEqual(offer.count("storageMaintenance.compactPersistentStorage()"), 1)
+        update = MAIN.split("void updateStorageMaintenanceCommand()", 1)[1].split(
+            "enum class ErrorState", 1
+        )[0]
+        self.assertEqual(update.count("storageMaintenance.compactPersistentStorage()"), 1)
 
-    def test_maintenance_is_offered_only_after_sequence_failure(self):
+    def test_maintenance_is_announced_only_after_sequence_failure(self):
         setup = MAIN.split("void setup()", 1)[1].split("void loop()", 1)[0]
         failure = setup.split("if (!measurementSequenceReady)", 1)[1].split("}", 1)[0]
-        self.assertIn("offerStorageMaintenanceAfterSequenceFailure()", failure)
-        self.assertNotIn("offerStorageMaintenanceAfterSequenceFailure()",
-                         setup.split("if (!measurementSequenceReady)", 1)[0])
-        self.assertLess(setup.index("offerStorageMaintenanceAfterSequenceFailure()"),
-                        setup.index("wifiCredentialStore.begin()"))
+        self.assertIn("announceStorageMaintenanceAvailable()", failure)
+        self.assertNotIn(
+            "announceStorageMaintenanceAvailable()",
+            setup.split("if (!measurementSequenceReady)", 1)[0],
+        )
+
+    def test_command_remains_available_in_normal_loop(self):
+        loop = MAIN.split("void loop()", 1)[1]
+        self.assertIn("updateStorageMaintenanceCommand();", loop)
+        self.assertLess(
+            loop.index("updateStorageMaintenanceCommand();"),
+            loop.index("measurementButton.update();"),
+        )
 
     def test_success_restarts_instead_of_reusing_allocator(self):
-        offer = MAIN.split("void offerStorageMaintenanceAfterSequenceFailure()", 1)[1].split(
-            "enum class ErrorState", 1)[0]
-        self.assertIn("NVIC_SystemReset()", offer)
-        self.assertNotIn("measurementSequenceAllocator.begin()", offer)
+        update = MAIN.split("void updateStorageMaintenanceCommand()", 1)[1].split(
+            "enum class ErrorState", 1
+        )[0]
+        self.assertIn("NVIC_SystemReset()", update)
+        self.assertNotIn("measurementSequenceAllocator.begin()", update)
 
     def test_required_diagnostics_are_present_without_secret_values(self):
         for event in ("START", "BACKUP_OK", "RESET_OK", "RESTORE_OK", "SUCCESS"):

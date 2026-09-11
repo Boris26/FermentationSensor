@@ -2,6 +2,11 @@
 
 #include <Arduino.h>
 
+namespace mbed
+{
+class KVStore;
+}
+
 class FlashStorage
 {
 public:
@@ -40,11 +45,13 @@ public:
     bool clearAll();
 
     // Destructive erase intended only for an explicit factory-reset flow.
+    // The legacy Mbed /kv/ store is cleared first so stale configuration
+    // cannot be imported again after the application store is erased.
     bool factoryReset();
 
     // Low-level operation used by StorageMaintenance after its complete
-    // in-RAM backup has been validated. It is deliberately not called by
-    // begin() or any normal boot path.
+    // in-RAM backup has been validated. It resets only the dedicated
+    // application store; the boot-time migration marker is recreated later.
     bool resetForMaintenance();
 
     bool clearWifi();
@@ -52,10 +59,23 @@ public:
     void debugPrintAll();
 
 private:
-    void printWriteError(const String& key, int result, size_t size) const;
+    bool migrateLegacyStore();
+    bool migrateLegacyKey(
+        const char* key,
+        bool& foundLegacyData
+    );
+    bool hasValidLayoutMarker() const;
+    bool writeLayoutMarker();
+    bool legacyStoreHasApplicationData() const;
+    void cleanupLegacyStore();
+
+    void printWriteError(
+        const char* key,
+        int result,
+        size_t size
+    ) const;
     void debugPrintEntries();
 
-    String buildKey(
-        const char* key
-    ) const;
+    mbed::KVStore* _store = nullptr;
+    bool _ready = false;
 };
