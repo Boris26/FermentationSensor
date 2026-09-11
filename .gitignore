@@ -1,2 +1,8 @@
 __pycache__/
 *.py[cod]
+
+# PlatformIO build files
+.pio/
+
+# VS Code / PlatformIO IDE files
+.vscode/
