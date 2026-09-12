@@ -4,6 +4,7 @@
 #include <kvstore_global_api.h>
 
 #include "config/Config.h"
+#include "config/SensorConfigService.h"
 
 #include "device/DeviceIdentity.h"
 
@@ -13,6 +14,7 @@
 #include "network/MeasurementOutbox.h"
 #include "network/MeasurementSequenceAllocator.h"
 #include "network/NetworkManager.h"
+#include "network/ConfigHttpServer.h"
 #include "network/ServerClient.h"
 #include "network/TemperatureTransmissionPolicy.h"
 #include "network/WifiCredentials.h"
@@ -32,6 +34,7 @@
 #include "storage/StorageMaintenance.h"
 #include "storage/TemperatureSensorStore.h"
 #include "storage/WifiCredentialStore.h"
+#include "storage/SensorConfigStore.h"
 
 
 FlashStorage flashStorage;
@@ -85,6 +88,20 @@ MeasurementOutbox measurementOutbox(
 
 PressureSensor pressureSensor;
 
+class RuntimeSensorConfigTarget : public SensorConfigTarget
+{
+public:
+    void applySensorConfig(const SensorConfig& config) override
+    {
+        pressureSensor.applyConfig(config);
+        temperatureTransmissionPolicy.setSendDeltaC(config.temperatureSendDeltaC);
+    }
+};
+
+RuntimeSensorConfigTarget runtimeSensorConfigTarget;
+SensorConfigStore sensorConfigStore(flashStorage);
+SensorConfigService sensorConfigService(sensorConfigStore, runtimeSensorConfigTarget);
+
 
 TemperatureSensorStore temperatureSensorStore(
     flashStorage
@@ -102,6 +119,10 @@ MeasurementButton measurementButton(
 
 
 MeasurementSession measurementSession;
+
+ConfigHttpServer configHttpServer(
+    sensorConfigService, deviceIdentity, measurementSession, serverClient
+);
 
 
 StatusLed statusLed(
@@ -745,6 +766,9 @@ void setup()
     // Device identity
     deviceIdentity.begin();
 
+    sensorConfigStore.begin();
+    sensorConfigService.begin();
+
     // Reserve measurement sequences before any outbox enqueue is possible.
     measurementSequenceStore.begin();
     measurementSequenceReady =
@@ -793,6 +817,7 @@ void setup()
         networkManager.begin(
             storedCredentials
         );
+        configHttpServer.begin();
     }
     else {
         Serial.println(
@@ -841,6 +866,7 @@ void loop()
     wifiSetupPortal.update();
 
     updateServerClient();
+    configHttpServer.update();
 
 
     // Temperature sensor

@@ -3,29 +3,34 @@
 #include <Arduino.h>
 #include <DFRobot_LWLP.h>
 
-#include "config/Config.h"
-
-
 namespace
 {
     DFRobot_LWLP lwlp;
 
-    unsigned long lastReadMs = 0;
+    PressureBubbleConfig defaultPressureConfig()
+    {
+        const SensorConfig config = SensorConfig::defaults();
+        return {config.calibrationMs, config.minTriggerDeltaPa, config.noiseFactor,
+            config.releaseFactor, config.minDurationMs, config.maxDurationMs,
+            config.refractoryMs, config.baselineTrackingAlpha};
+    }
 }
 
 PressureSensor::PressureSensor()
-    : _bubbleDetector({
-        PRESSURE_CALIBRATION_MS,
-        BUBBLE_MIN_TRIGGER_DELTA_PA,
-        BUBBLE_NOISE_FACTOR,
-        BUBBLE_RELEASE_FACTOR,
-        BUBBLE_MIN_DURATION_MS,
-        BUBBLE_MAX_DURATION_MS,
-        BUBBLE_REFRACTORY_MS,
-        PRESSURE_BASELINE_TRACKING_ALPHA
-    }),
-    _bubbleActivityAggregator(BUBBLE_ACTIVITY_WINDOW_MS)
+    : _bubbleDetector(defaultPressureConfig()),
+    _bubbleActivityAggregator(SensorConfig::defaults().bubbleActivityWindowMs)
 {
+}
+
+void PressureSensor::applyConfig(const SensorConfig& config)
+{
+    _config = config;
+    _bubbleDetector.reconfigure({config.calibrationMs, config.minTriggerDeltaPa,
+        config.noiseFactor, config.releaseFactor, config.minDurationMs,
+        config.maxDurationMs, config.refractoryMs, config.baselineTrackingAlpha});
+    _bubbleActivityAggregator.reconfigure(config.bubbleActivityWindowMs);
+    _diagnosedWindowRevision = 0;
+    _lastReadMs = 0;
 }
 
 
@@ -70,14 +75,13 @@ void PressureSensor::update()
         millis();
 
     if (
-        now - lastReadMs <
-        PRESSURE_SAMPLE_INTERVAL_MS
+        now - _lastReadMs < _config.sampleIntervalMs
     )
     {
         return;
     }
 
-    lastReadMs = now;
+    _lastReadMs = now;
 
     const DFRobot_LWLP::sLwlp_t data =
         lwlp.getData();
@@ -104,7 +108,7 @@ void PressureSensor::update()
 
     if (bubbleDetected) _bubbleActivityAggregator.recordBubble();
 
-    if (PRESSURE_RAW_DIAGNOSTICS_ENABLED)
+    if (_config.rawPressureDiagnosticsEnabled)
     {
         Serial.print("PRESSURE,");
         Serial.print(now);
@@ -112,7 +116,7 @@ void PressureSensor::update()
         Serial.println(_pressurePa, 2);
     }
 
-    if (PRESSURE_DIAGNOSTICS_ENABLED)
+    if (_config.eventDiagnosticsEnabled)
     {
         if (!wasCalibrated && _bubbleDetector.isCalibrated())
         {

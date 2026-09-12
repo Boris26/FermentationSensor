@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "config/Config.h"
+#include "config/SensorConfig.h"
 
 namespace
 {
@@ -12,6 +13,7 @@ constexpr char WIFI_KEY[] = "wifi_config";
 constexpr char TEMPERATURE_KEY[] = "temperature_config";
 constexpr char GATEWAY_KEY[] = "gateway_cache";
 constexpr char SEQUENCE_KEY[] = "measurement_sequence_v1";
+constexpr char SENSOR_CONFIG_KEY[] = "sensor_config_v1";
 
 struct DeviceRecord { char id[37]; char name[64]; };
 struct WifiRecord { uint8_t version; char ssid[33]; char password[64]; };
@@ -32,6 +34,12 @@ struct SequenceRecord {
     uint32_t nextBlockStart;
     uint8_t version;
     uint8_t reserved[3];
+};
+struct SensorConfigurationRecord {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    SensorConfig config;
 };
 
 static_assert(sizeof(DeviceRecord) == 101, "device record layout changed");
@@ -57,7 +65,7 @@ bool validUuid(const char* value)
     for (size_t i = 0; i < 36; ++i) {
         const bool separator = i == 8 || i == 13 || i == 18 || i == 23;
         if (separator) { if (value[i] != '-') return false; continue; }
-        const char c = value[i];
+        const unsigned char c = static_cast<unsigned char>(value[i]);
         if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
               (c >= 'A' && c <= 'F'))) return false;
     }
@@ -73,7 +81,7 @@ bool validName(const char* value)
         const char c = value[i];
         if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
               (c >= '0' && c <= '9') || c == ' ' || c == '-' || c == '_' ||
-              c == '.' || c == '(' || c == ')')) return false;
+              c == '.' || c == '(' || c == ')' || c >= 0x80)) return false;
     }
     return true;
 }
@@ -102,6 +110,12 @@ bool valid(const SequenceRecord& r)
         r.nextBlockStart % MEASUREMENT_SEQUENCE_BLOCK_SIZE == 0 &&
         r.nextBlockStart <= UINT32_MAX -
             (2U * MEASUREMENT_SEQUENCE_BLOCK_SIZE - 1U);
+}
+bool valid(const SensorConfigurationRecord& r)
+{
+    const char* error = nullptr;
+    return r.magic == 0x53434647UL && r.version == SensorConfig::VERSION &&
+        r.size == sizeof(SensorConfig) && r.config.validate(error);
 }
 
 template<typename T>
@@ -147,11 +161,13 @@ bool StorageMaintenance::compactPersistentStorage()
     Backup<TemperatureRecord> temperature;
     Backup<GatewayRecord> gateway;
     Backup<SequenceRecord> sequence;
+    Backup<SensorConfigurationRecord> sensorConfig;
     if (!backupRecord(_storage, DEVICE_KEY, true, device) ||
         !backupRecord(_storage, WIFI_KEY, false, wifi) ||
         !backupRecord(_storage, TEMPERATURE_KEY, false, temperature) ||
         !backupRecord(_storage, GATEWAY_KEY, false, gateway) ||
-        !backupRecord(_storage, SEQUENCE_KEY, true, sequence)) return fail("BACKUP");
+        !backupRecord(_storage, SEQUENCE_KEY, true, sequence) ||
+        !backupRecord(_storage, SENSOR_CONFIG_KEY, false, sensorConfig)) return fail("BACKUP");
 
     Serial.println("STORAGE_MAINTENANCE_BACKUP_OK");
     if (!_storage.resetForMaintenance()) return fail("RESET");
@@ -161,14 +177,16 @@ bool StorageMaintenance::compactPersistentStorage()
         !restoreRecord(_storage, WIFI_KEY, wifi) ||
         !restoreRecord(_storage, TEMPERATURE_KEY, temperature) ||
         !restoreRecord(_storage, GATEWAY_KEY, gateway) ||
-        !restoreRecord(_storage, SEQUENCE_KEY, sequence)) return fail("RESTORE");
+        !restoreRecord(_storage, SEQUENCE_KEY, sequence) ||
+        !restoreRecord(_storage, SENSOR_CONFIG_KEY, sensorConfig)) return fail("RESTORE");
     Serial.println("STORAGE_MAINTENANCE_RESTORE_OK");
 
     if (!verifyRecord(_storage, DEVICE_KEY, device) ||
         !verifyRecord(_storage, WIFI_KEY, wifi) ||
         !verifyRecord(_storage, TEMPERATURE_KEY, temperature) ||
         !verifyRecord(_storage, GATEWAY_KEY, gateway) ||
-        !verifyRecord(_storage, SEQUENCE_KEY, sequence)) return fail("VERIFY");
+        !verifyRecord(_storage, SEQUENCE_KEY, sequence) ||
+        !verifyRecord(_storage, SENSOR_CONFIG_KEY, sensorConfig)) return fail("VERIFY");
 
     Serial.println("STORAGE_MAINTENANCE_SUCCESS");
     return true;

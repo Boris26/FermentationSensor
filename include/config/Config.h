@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "config/SensorConfig.h"
 
 
 constexpr char DEVICE_ID[] = "FERM-01";
@@ -22,27 +23,27 @@ constexpr uint8_t SESSION_LED_PIN = 6;
 
 // Temperature
 constexpr unsigned long TEMPERATURE_INTERVAL_MS = 60000;
-constexpr float TEMPERATURE_SEND_DELTA_C = 1.0f;
+constexpr float TEMPERATURE_SEND_DELTA_C = SensorConfig::DEFAULT_TEMPERATURE_SEND_DELTA_C;
 
 
 // Pressure sampling and diagnostics
-constexpr unsigned long PRESSURE_SAMPLE_INTERVAL_MS = 100;
+constexpr unsigned long PRESSURE_SAMPLE_INTERVAL_MS = SensorConfig::DEFAULT_SAMPLE_INTERVAL_MS;
 // Event diagnostics are useful during normal operation and are independent of
 // the high-frequency raw sample stream.
-constexpr bool PRESSURE_DIAGNOSTICS_ENABLED = true;
+constexpr bool PRESSURE_DIAGNOSTICS_ENABLED = SensorConfig::DEFAULT_EVENT_DIAGNOSTICS;
 // Enable only temporarily for sensor development/calibration. This emits one
 // PRESSURE,<millis>,<pressure> line for every pressure sample.
-constexpr bool PRESSURE_RAW_DIAGNOSTICS_ENABLED = false;
+constexpr bool PRESSURE_RAW_DIAGNOSTICS_ENABLED = SensorConfig::DEFAULT_RAW_PRESSURE_DIAGNOSTICS;
 
 // Pressure calibration and technical bubble detection
-constexpr unsigned long PRESSURE_CALIBRATION_MS = 300000;
-constexpr float BUBBLE_MIN_TRIGGER_DELTA_PA = 0.50f;
-constexpr float BUBBLE_NOISE_FACTOR = 5.0f;
-constexpr float BUBBLE_RELEASE_FACTOR = 0.40f;
-constexpr unsigned long BUBBLE_MIN_DURATION_MS = 100;
-constexpr unsigned long BUBBLE_MAX_DURATION_MS = 3000;
-constexpr unsigned long BUBBLE_REFRACTORY_MS = 500;
-constexpr unsigned long BUBBLE_ACTIVITY_WINDOW_MS = 60000;
+constexpr unsigned long PRESSURE_CALIBRATION_MS = SensorConfig::DEFAULT_CALIBRATION_MS;
+constexpr float BUBBLE_MIN_TRIGGER_DELTA_PA = SensorConfig::DEFAULT_MIN_TRIGGER_DELTA_PA;
+constexpr float BUBBLE_NOISE_FACTOR = SensorConfig::DEFAULT_NOISE_FACTOR;
+constexpr float BUBBLE_RELEASE_FACTOR = SensorConfig::DEFAULT_RELEASE_FACTOR;
+constexpr unsigned long BUBBLE_MIN_DURATION_MS = SensorConfig::DEFAULT_MIN_DURATION_MS;
+constexpr unsigned long BUBBLE_MAX_DURATION_MS = SensorConfig::DEFAULT_MAX_DURATION_MS;
+constexpr unsigned long BUBBLE_REFRACTORY_MS = SensorConfig::DEFAULT_REFRACTORY_MS;
+constexpr unsigned long BUBBLE_ACTIVITY_WINDOW_MS = SensorConfig::DEFAULT_ACTIVITY_WINDOW_MS;
 constexpr size_t MEASUREMENT_OUTBOX_CAPACITY = 384;
 constexpr unsigned long MEASUREMENT_ACK_TIMEOUT_MS = 5000;
 constexpr uint32_t MEASUREMENT_SEQUENCE_BLOCK_SIZE = 65536U;
@@ -50,7 +51,7 @@ constexpr uint32_t MEASUREMENT_SEQUENCE_BLOCK_SIZE = 65536U;
 // low values, so the first persistent allocation starts in a safely separated
 // range rather than risking reuse of an already accepted sequence.
 constexpr uint32_t MEASUREMENT_SEQUENCE_INITIAL_START = 0x01000000U;
-constexpr float PRESSURE_BASELINE_TRACKING_ALPHA = 0.001f;
+constexpr float PRESSURE_BASELINE_TRACKING_ALPHA = SensorConfig::DEFAULT_BASELINE_TRACKING_ALPHA;
 
 
 // Status / Heartbeat

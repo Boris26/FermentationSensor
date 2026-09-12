@@ -21,6 +21,7 @@ public:
     void requestCurrentMeasurement();
     bool isCurrentMeasurementRequested() const;
     void resetRuntimeState();
+    void setSendDeltaC(float sendDeltaC) { _sendDeltaC = sendDeltaC; }
 
 private:
     float _sendDeltaC;

@@ -45,6 +45,7 @@ constexpr const char* LEGACY_APPLICATION_KEYS[] = {
     "temperature_config",
     "gateway_cache",
     "measurement_sequence_v1",
+    "sensor_config_v1",
     // Older firmware keys are copied too so their existing store-specific
     // migration logic can still run after moving to the dedicated store.
     "wifi_ssid",

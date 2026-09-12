@@ -29,6 +29,7 @@ public:
     void onNetworkDisconnected();
 
     void stop();
+    void requestReconnect();
 
     uint8_t failedConnectionCycles() const;
 

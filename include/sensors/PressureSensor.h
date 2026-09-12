@@ -2,6 +2,7 @@
 
 #include "sensors/PressureBubbleDetector.h"
 #include "sensors/BubbleActivityAggregator.h"
+#include "config/SensorConfig.h"
 
 class PressureSensor
 {
@@ -12,6 +13,7 @@ public:
     void update();
     void onSessionRunning();
     void onSessionPaused();
+    void applyConfig(const SensorConfig& config);
 
     bool isAvailable() const;
     float getPressurePa() const;
@@ -25,4 +27,6 @@ private:
     PressureBubbleDetector _bubbleDetector;
     BubbleActivityAggregator _bubbleActivityAggregator;
     uint32_t _diagnosedWindowRevision = 0;
+    SensorConfig _config = SensorConfig::defaults();
+    unsigned long _lastReadMs = 0;
 };

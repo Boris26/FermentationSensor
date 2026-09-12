@@ -8,6 +8,16 @@ PressureBubbleDetector::PressureBubbleDetector(const PressureBubbleConfig& confi
 {
 }
 
+void PressureBubbleDetector::reconfigure(const PressureBubbleConfig& config)
+{
+    _config = config;
+    _mode = Mode::UNCALIBRATED;
+    _detectionState = DetectionState::IDLE;
+    _paused = true;
+    _totalBubbleCount = 0;
+    clearCalibrationData();
+}
+
 void PressureBubbleDetector::onRunning(unsigned long nowMs)
 {
     if (_paused && _mode == Mode::CALIBRATING) {

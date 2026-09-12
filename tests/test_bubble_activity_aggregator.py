@@ -151,7 +151,7 @@ class BubbleActivityAggregatorTests(unittest.TestCase):
         subprocess.run([str(self.executable)], check=True)
 
     def test_configuration_and_minimal_integration(self):
-        self.assertIn("BUBBLE_ACTIVITY_WINDOW_MS = 60000", CONFIG)
+        self.assertIn("DEFAULT_ACTIVITY_WINDOW_MS = 60000", (ROOT / "include/config/SensorConfig.h").read_text())
         self.assertIn("_bubbleActivityAggregator.start(now);", PRESSURE)
         self.assertIn("_bubbleActivityAggregator.update(now);", PRESSURE)
         self.assertIn("_bubbleActivityAggregator.recordBubble();", PRESSURE)
