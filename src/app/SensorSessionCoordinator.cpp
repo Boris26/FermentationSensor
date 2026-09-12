@@ -6,6 +6,7 @@
 #include "config/Config.h"
 #include "input/MeasurementButton.h"
 #include "network/TemperatureTransmissionPolicy.h"
+#include "network/FermentationStarter.h"
 #include "sensors/PressureSensor.h"
 #include "sensors/TemperatureSensor.h"
 
@@ -13,10 +14,11 @@ SensorSessionCoordinator::SensorSessionCoordinator(
     TemperatureSensor& temperatureSensor, PressureSensor& pressureSensor,
     MeasurementButton& button, MeasurementSession& session,
     TemperatureTransmissionPolicy& temperaturePolicy,
-    MeasurementTransport& transport, StatusController& status
+    MeasurementTransport& transport, FermentationStarter& fermentationStarter,
+    StatusController& status
 ) : _temperatureSensor(temperatureSensor), _pressureSensor(pressureSensor),
     _button(button), _session(session), _temperaturePolicy(temperaturePolicy),
-    _transport(transport), _status(status)
+    _transport(transport), _fermentationStarter(fermentationStarter), _status(status)
 {
 }
 
@@ -97,7 +99,12 @@ void SensorSessionCoordinator::updateSessionInput()
     if (_sessionInitialized && _button.wasPressed()) {
         _session.handleButtonPress();
         const MeasurementState current = _session.getState();
-        if (current == MeasurementState::RUNNING) _pressureSensor.onSessionRunning();
+        if (current == MeasurementState::RUNNING) {
+            _pressureSensor.onSessionRunning();
+            if (_lastState == MeasurementState::IDLE) {
+                _fermentationStarter.requestStart();
+            }
+        }
         else if (current == MeasurementState::PAUSED) _pressureSensor.onSessionPaused();
         if (current != _lastState) {
             _status.showMeasurementState(current);

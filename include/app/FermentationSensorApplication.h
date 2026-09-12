@@ -11,6 +11,7 @@
 #include "input/MeasurementButton.h"
 #include "network/ConfigHttpServer.h"
 #include "network/GatewayDiscovery.h"
+#include "network/FermentationStarter.h"
 #include "network/MeasurementOutbox.h"
 #include "network/MeasurementSequenceAllocator.h"
 #include "network/NetworkManager.h"
@@ -51,6 +52,7 @@ private:
     GatewayEndpointStore _gatewayEndpointStore;
     GatewayDiscovery _gatewayDiscovery;
     ServerClient _serverClient;
+    FermentationStarter _fermentationStarter;
     TemperatureTransmissionPolicy _temperaturePolicy;
     MeasurementSequenceStore _measurementSequenceStore;
     MeasurementSequenceAllocator _measurementSequenceAllocator;

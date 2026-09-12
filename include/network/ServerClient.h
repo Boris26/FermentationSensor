@@ -26,6 +26,10 @@ public:
 
     bool isRegistered() const;
 
+    const String& finishedBeerId() const;
+
+    const GatewayEndpoint& endpoint() const;
+
     void onNetworkDisconnected();
 
     void stop();
@@ -66,6 +70,12 @@ private:
         uint32_t& sequence
     ) const;
 
+    bool parseStringField(
+        const String& message,
+        const char* field,
+        String& value
+    ) const;
+
 
     DeviceIdentity& _deviceIdentity;
 
@@ -82,6 +92,7 @@ private:
     bool _connected = false;
 
     bool _registered = false;
+    String _finishedBeerId;
     bool _hasMeasurementAcknowledgement = false;
     uint32_t _measurementAcknowledgementSequence = 0;
 

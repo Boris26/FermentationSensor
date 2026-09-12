@@ -131,6 +131,16 @@ bool ServerClient::isRegistered() const
     return _registered;
 }
 
+const String& ServerClient::finishedBeerId() const
+{
+    return _finishedBeerId;
+}
+
+const GatewayEndpoint& ServerClient::endpoint() const
+{
+    return _endpoint;
+}
+
 
 void ServerClient::onNetworkDisconnected()
 {
@@ -545,6 +555,10 @@ void ServerClient::handleMessage(
 
     if (type == "REGISTER_SENSOR_ACK") {
         if (!_registered) {
+            String finishedBeerId;
+            if (parseStringField(message, "beerId", finishedBeerId)) {
+                _finishedBeerId = finishedBeerId;
+            }
             _registered = true;
 
             _failedConnectionCycles = 0;
@@ -564,6 +578,42 @@ void ServerClient::handleMessage(
         "ServerClient: unknown message type: "
     );
     Serial.println(type);
+}
+
+bool ServerClient::parseStringField(
+    const String& message,
+    const char* field,
+    String& value
+) const
+{
+    const String key = String("\"") + field + "\"";
+    int position = message.indexOf(key);
+    if (position < 0) return false;
+    position += key.length();
+
+    while (position < static_cast<int>(message.length()) &&
+           (message[position] == ' ' || message[position] == '\t' ||
+            message[position] == '\r' || message[position] == '\n')) ++position;
+    if (position >= static_cast<int>(message.length()) ||
+        message[position++] != ':') return false;
+    while (position < static_cast<int>(message.length()) &&
+           (message[position] == ' ' || message[position] == '\t' ||
+            message[position] == '\r' || message[position] == '\n')) ++position;
+    if (position >= static_cast<int>(message.length()) ||
+        message[position++] != '"') return false;
+
+    value = "";
+    while (position < static_cast<int>(message.length())) {
+        const char character = message[position++];
+        if (character == '"') return !value.isEmpty();
+        if (character == '\\' || static_cast<uint8_t>(character) < 0x20) {
+            value = "";
+            return false;
+        }
+        value += character;
+    }
+    value = "";
+    return false;
 }
 
 bool ServerClient::parseMeasurementAcknowledgement(
