@@ -262,20 +262,7 @@ bool TemperatureSensor::update()
                 temperature;
 
             ambientMeasurementReceived =
-                true;
-
-
-            Serial.print(
-                "Ambient temperature: "
-            );
-
-            Serial.print(
-                temperature
-            );
-
-            Serial.println(
-                " C"
-            );
+                true;           
         }
         else if (isBeerSensor(address)) {
             if (temperature == DEVICE_DISCONNECTED_C) {
@@ -290,41 +277,12 @@ bool TemperatureSensor::update()
                 temperature;
 
             beerMeasurementReceived =
-                true;
-
-
-            Serial.print(
-                "Beer temperature: "
-            );
-
-            Serial.print(
-                temperature
-            );
-
-            Serial.println(
-                " C"
-            );
+                true;           
         }
         else {
             Serial.print(
                 "Unknown sensor "
-            );
-
-            printSensorAddress(
-                address
-            );
-
-            Serial.print(
-                ": "
-            );
-
-            Serial.print(
-                temperature
-            );
-
-            Serial.println(
-                " C"
-            );
+            );           
         }
     }
 
