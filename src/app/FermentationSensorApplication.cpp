@@ -12,6 +12,7 @@ FermentationSensorApplication::FermentationSensorApplication() :
     _wifiSetupPortal(_wifiCredentialStore),
     _gatewayEndpointStore(_flashStorage),
     _serverClient(_deviceIdentity),
+    _fermentationStarter(_serverClient),
     _temperaturePolicy(TEMPERATURE_SEND_DELTA_C),
     _measurementSequenceStore(_flashStorage),
     _measurementSequenceAllocator(_measurementSequenceStore),
@@ -39,7 +40,7 @@ FermentationSensorApplication::FermentationSensorApplication() :
     _sensorSession(
         _temperatureSensor, _pressureSensor, _measurementButton,
         _measurementSession, _temperaturePolicy, _measurementTransport,
-        _statusController
+        _fermentationStarter, _statusController
     ),
     _maintenanceConsole(_storageMaintenance)
 {
@@ -112,6 +113,7 @@ void FermentationSensorApplication::update()
         _measurementSequenceReady, _sensorSession.sensorsReady()
     );
     _sensorSession.updateSessionInput();
+    _fermentationStarter.update();
     _measurementTransport.update(_measurementSequenceReady);
 }
 

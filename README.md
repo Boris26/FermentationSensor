@@ -64,7 +64,7 @@ WiFi
   -> Endpoint als Cache speichern
   -> WebSocket
   -> REGISTER_SENSOR
-  -> REGISTER_SENSOR_ACK
+  -> REGISTER_SENSOR_ACK (mit zugeordneter beerId)
   -> Measurements
 ```
 
@@ -97,7 +97,14 @@ Der `ServerClient` verwendet weiterhin `ArduinoHttpClient`/`WebSocketClient` und
 {"type":"REGISTER_SENSOR","deviceId":"<persistente UUID>","deviceName":"<Name>"}
 ```
 
-Messdaten dürfen erst nach `{"type":"REGISTER_SENSOR_ACK"}` gesendet werden. Sie können jedoch bereits vorher in die gemeinsame Measurement-Outbox eingestellt werden. Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff bleiben aktiv.
+Messdaten dürfen erst nach `{"type":"REGISTER_SENSOR_ACK","beerId":"<FinishedBeer-ID>"}` gesendet werden. Die `beerId` stammt aus der bereits im Backend vorhandenen Sensorzuordnung. Sie können jedoch bereits vorher in die gemeinsame Measurement-Outbox eingestellt werden. Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff bleiben aktiv.
+
+Beim ersten lokalen Wechsel von `IDLE` nach `RUNNING` sendet die Firmware zusätzlich
+`POST /finishedbeer/<beerId>/start-fermentation` ohne Request-Body an den ermittelten
+Backend-Endpoint. BeerDataStore setzt Status und `fermentationStartedAt`; die Firmware
+enthält dafür keine eigene fachliche Zustandslogik. Fehler werden mit begrenztem
+exponentiellem Backoff wiederholt und sind von WebSocket, Messwerten und deren ACKs
+isoliert. Resume und Reconnect erzeugen keinen weiteren fachlichen Start.
 
 Die beiden gepufferten Sensor-Nachrichten werden vollständig so übertragen (das Druckfeld der Temperatur ist optional):
 
@@ -254,7 +261,7 @@ BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>,<averagePressureDeltaPa>
 
 - **Sensor:** misst Druck, kalibriert die technische Erkennung, erkennt `BubbleEvent`s und aggregiert deren technische Aktivität.
 - **Gateway:** bestätigt und übernimmt ausschließlich Transport beziehungsweise Übersetzung dieser Daten.
-- **BeerDataStore / Backend:** übernimmt später Speicherung und fachliche Auswertung.
+- **BeerDataStore / Backend:** übernimmt Speicherung und fachliche Auswertung.
 - **UI:** übernimmt später die Anzeige.
 
 Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung aktiv“, „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“, „Gärung beendet“ oder „Plato stabil“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Fachliche Auswertung und Flash-Persistenz der Outbox bleiben bewusst außerhalb dieser Firmware-Erweiterung.
@@ -285,4 +292,4 @@ Abhängigkeiten: WiFiNINA, ArduinoHttpClient, OneWire und DallasTemperature. DNS
 
 ## Bewusste fachliche Grenzen
 
-Nicht implementiert sind flash-persistentes Offline-Replay, fachliche Bubble-Auswertung, Plato-, Alkohol- oder Vergärungsberechnung sowie eine Bewertung des Gärverlaufs. Der Sensor kennt weder `beerId` noch ein Datenbankmodell oder einen fachlichen Gärstatus.
+Nicht implementiert sind flash-persistentes Offline-Replay, fachliche Bubble-Auswertung, Plato-, Alkohol- oder Vergärungsberechnung sowie eine Bewertung des Gärverlaufs. Der Sensor kennt aus der Registrierungsantwort ausschließlich die zugeordnete `beerId`, aber weder ein Datenbankmodell noch einen fachlichen Gärstatus.

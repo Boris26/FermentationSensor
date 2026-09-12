@@ -4,6 +4,7 @@
 
 class MeasurementButton;
 class MeasurementTransport;
+class FermentationStarter;
 class PressureSensor;
 class StatusController;
 class TemperatureSensor;
@@ -19,6 +20,7 @@ public:
         MeasurementSession& session,
         TemperatureTransmissionPolicy& temperaturePolicy,
         MeasurementTransport& transport,
+        FermentationStarter& fermentationStarter,
         StatusController& status
     );
 
@@ -39,6 +41,7 @@ private:
     MeasurementSession& _session;
     TemperatureTransmissionPolicy& _temperaturePolicy;
     MeasurementTransport& _transport;
+    FermentationStarter& _fermentationStarter;
     StatusController& _status;
     MeasurementState _lastState = MeasurementState::IDLE;
     bool _sensorsReady = false;
