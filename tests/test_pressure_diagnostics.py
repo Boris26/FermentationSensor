@@ -13,27 +13,25 @@ CLIENT = (ROOT / "src/network/ServerClient.cpp").read_text()
 
 class PressureDiagnosticsTests(unittest.TestCase):
     def test_sampling_interval_is_central_configuration(self):
-        self.assertIn("PRESSURE_SAMPLE_INTERVAL_MS = 100", CONFIG)
-        self.assertIn("PRESSURE_SAMPLE_INTERVAL_MS", PRESSURE)
+        self.assertIn("PRESSURE_SAMPLE_INTERVAL_MS = SensorConfig::DEFAULT_SAMPLE_INTERVAL_MS", CONFIG)
+        self.assertIn("_config.sampleIntervalMs", PRESSURE)
         self.assertNotIn("READ_INTERVAL_MS", PRESSURE)
 
     def test_raw_diagnostics_are_disabled_without_disabling_sampling(self):
         self.assertIn("PRESSURE_DIAGNOSTICS_ENABLED", CONFIG)
-        self.assertIn("PRESSURE_RAW_DIAGNOSTICS_ENABLED = false", CONFIG)
+        self.assertIn("DEFAULT_RAW_PRESSURE_DIAGNOSTICS = false", (ROOT / "include/config/SensorConfig.h").read_text())
         assignment = PRESSURE.index("_pressurePa =")
-        raw_diagnostics = PRESSURE.index(
-            "if (PRESSURE_RAW_DIAGNOSTICS_ENABLED)"
-        )
+        raw_diagnostics = PRESSURE.index("if (_config.rawPressureDiagnosticsEnabled)")
         self.assertLess(assignment, raw_diagnostics)
 
     def test_pressure_update_remains_non_blocking(self):
-        self.assertIn("now - lastReadMs <", PRESSURE)
+        self.assertIn("now - _lastReadMs <", PRESSURE)
         self.assertNotIn("delay(", PRESSURE)
         self.assertNotIn("while (", PRESSURE)
 
     def test_raw_line_is_isolated_behind_its_opt_in_flag(self):
-        raw_start = PRESSURE.index("if (PRESSURE_RAW_DIAGNOSTICS_ENABLED)")
-        event_start = PRESSURE.index("if (PRESSURE_DIAGNOSTICS_ENABLED)")
+        raw_start = PRESSURE.index("if (_config.rawPressureDiagnosticsEnabled)")
+        event_start = PRESSURE.index("if (_config.eventDiagnosticsEnabled)")
         raw_diagnostics = PRESSURE[raw_start:event_start]
         self.assertIn('Serial.print("PRESSURE,");', raw_diagnostics)
         self.assertIn("Serial.print(now);", raw_diagnostics)
@@ -41,8 +39,8 @@ class PressureDiagnosticsTests(unittest.TestCase):
         self.assertNotIn("data.temperature", PRESSURE)
 
     def test_event_diagnostics_remain_enabled_independently(self):
-        self.assertIn("PRESSURE_DIAGNOSTICS_ENABLED = true", CONFIG)
-        event_start = PRESSURE.index("if (PRESSURE_DIAGNOSTICS_ENABLED)")
+        self.assertIn("DEFAULT_EVENT_DIAGNOSTICS = true", (ROOT / "include/config/SensorConfig.h").read_text())
+        event_start = PRESSURE.index("if (_config.eventDiagnosticsEnabled)")
         events = PRESSURE[event_start:]
         for event in (
             'Serial.print("PRESSURE_CALIBRATED,baseline=");',

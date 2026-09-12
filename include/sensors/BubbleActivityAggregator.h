@@ -18,6 +18,7 @@ class BubbleActivityAggregator
 {
 public:
     explicit BubbleActivityAggregator(unsigned long windowDurationMs);
+    void reconfigure(unsigned long windowDurationMs);
 
     void start(unsigned long nowMs);
     void update(unsigned long nowMs);
@@ -37,7 +38,7 @@ public:
 private:
     void completeWindow(unsigned long nextWindowStartedAtMs);
 
-    const unsigned long _windowDurationMs;
+    unsigned long _windowDurationMs;
     BubbleActivityWindow _currentWindow;
     BubbleActivityWindow _completedWindow;
     unsigned long _activeElapsedMs = 0;

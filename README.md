@@ -14,6 +14,43 @@ Ein Upgrade der Plattform oder des Frameworks ist ausdrücklich ein separater
 Schritt und darf nicht implizit zusammen mit Änderungen am persistenten Speicher
 erfolgen.
 
+## Lokale technische Konfiguration
+
+Nach einer erfolgreichen WLAN-Verbindung stellt der Sensor zusätzlich auf Port
+80 eine kleine, vollständig in der Firmware enthaltene Seite bereit. Sie ist
+über die aktuelle IP-Adresse (und, soweit die bestehende lokale Namensauflösung
+den Host bekannt macht, über `http://FERM-xxxxxx.local/`) erreichbar. Der Server
+bearbeitet pro Loop nur ein begrenztes Byte-Budget, begrenzt Header und Body und
+wartet nie blockierend auf einen vollständigen Request.
+
+* `GET /` liefert HTML, CSS und JavaScript ohne externe Abhängigkeiten.
+* `GET /api/config` liefert ausschließlich technische Sensorparameter.
+* `POST /api/config` akzeptiert den vollständigen Parametersatz nur in
+  `MeasurementState::IDLE`; in `RUNNING` und `PAUSED` antwortet er mit 409.
+* `GET /api/device` liefert unveränderliche UUID und Anzeigenamen.
+* `PUT /api/device/name` ändert ausschließlich den validierten Anzeigenamen.
+
+Die Runtime-Konfiguration wird als genau ein Record `sensor_config_v1` mit
+Magic, Version und sämtlichen Werten im bestehenden dedizierten 64-KiB-Store
+gespeichert. Fehlt er oder ist er ungültig, gelten sichere Defaults (unter
+anderem Ereignisdiagnose an, Rohdruckdiagnose aus). Integer- und Float-Werte
+haben harte Obergrenzen; Fließkommazahlen müssen endlich sein. Erst ein
+erfolgreich zurückgelesener und bytegleich verifizierter Write wird zur Laufzeit
+aktiv. Identische Daten verursachen keinen Write. Druckdetektor, Aggregator und
+Temperatur-Sendeschwelle werden im IDLE-Zustand gemeinsam neu konfiguriert.
+
+Eine Namensänderung verwendet weiterhin den vorhandenen `device_config`-Record,
+ändert niemals die UUID und wird ebenfalls zurückgelesen und verifiziert. Danach
+wird kontrolliert zum Gateway reconnectet, damit `REGISTER_SENSOR` den neuen
+Anzeigenamen übermittelt. Der Name verändert weder die technische
+Netzwerkidentität noch Discovery-Endpunkte oder den mDNS-Hostnamen.
+
+Konfigurierbar sind die beiden Diagnoseflags, Sampling- und Kalibrierungsdauer,
+Trigger-, Noise-, Release- und Baseline-Faktoren, minimale/maximale Bubble-Dauer,
+Refractory-Dauer, Aggregationsfenster und Temperatur-Übertragungsschwelle. UUID,
+WLAN-Zugangsdaten, Sequence-Zustand, Flash-Layout, Protokoll-, Pin-, Outbox- und
+ACK-Einstellungen werden weder ausgeliefert noch akzeptiert.
+
 ## Netzwerkarchitektur
 
 Nach dem WLAN-Provisioning betreibt der Sensor keinen anwendungsspezifischen TCP- oder UDP-Server. Der Ablauf ist:

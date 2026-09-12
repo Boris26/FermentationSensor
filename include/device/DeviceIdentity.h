@@ -7,6 +7,7 @@
 class DeviceIdentity
 {
 public:
+    enum class NameUpdateResult { CHANGED, UNCHANGED, INVALID, STORAGE_ERROR };
     explicit DeviceIdentity(
         FlashStorage& storage
     );
@@ -19,6 +20,8 @@ public:
     bool setDeviceName(
         const String& name
     );
+    NameUpdateResult updateDeviceName(const String& name);
+    static constexpr size_t maxDeviceNameLength() { return MAX_DEVICE_NAME_LENGTH; }
 
 private:
     static constexpr size_t DEVICE_ID_LENGTH = 36;

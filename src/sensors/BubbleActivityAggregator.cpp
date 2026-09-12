@@ -7,6 +7,12 @@ BubbleActivityAggregator::BubbleActivityAggregator(unsigned long windowDurationM
 {
 }
 
+void BubbleActivityAggregator::reconfigure(unsigned long windowDurationMs)
+{
+    _windowDurationMs = windowDurationMs;
+    reset();
+}
+
 void BubbleActivityAggregator::start(unsigned long nowMs)
 {
     _currentWindow = BubbleActivityWindow();

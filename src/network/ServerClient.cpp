@@ -158,6 +158,13 @@ void ServerClient::stop()
     _failedConnectionCycles = 0;
 }
 
+void ServerClient::requestReconnect()
+{
+    if (!_configured) return;
+    disconnect();
+    _lastConnectionAttemptMs = millis() - _reconnectIntervalMs;
+}
+
 uint8_t ServerClient::failedConnectionCycles() const
 {
     return _failedConnectionCycles;

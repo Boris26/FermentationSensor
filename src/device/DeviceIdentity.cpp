@@ -111,8 +111,13 @@ bool DeviceIdentity::setDeviceName(
     const String& name
 )
 {
+    return updateDeviceName(name) == NameUpdateResult::CHANGED;
+}
+
+DeviceIdentity::NameUpdateResult DeviceIdentity::updateDeviceName(const String& name)
+{
     if (!_initialized) {
-        return false;
+        return NameUpdateResult::STORAGE_ERROR;
     }
 
 
@@ -127,8 +132,10 @@ bool DeviceIdentity::setDeviceName(
             "DeviceIdentity: invalid device name."
         );
 
-        return false;
+        return NameUpdateResult::INVALID;
     }
+
+    if (trimmedName == _deviceName) return NameUpdateResult::UNCHANGED;
 
 
     if (
@@ -141,7 +148,14 @@ bool DeviceIdentity::setDeviceName(
             "DeviceIdentity: failed to save device name."
         );
 
-        return false;
+        return NameUpdateResult::STORAGE_ERROR;
+    }
+
+    StoredDeviceConfiguration verified = {};
+    if (!_storage.getBytes(DEVICE_CONFIG_KEY, &verified, sizeof(verified)) ||
+        String(verified.deviceId) != _deviceId || String(verified.deviceName) != trimmedName) {
+        // Runtime identity remains unchanged if durable verification fails.
+        return NameUpdateResult::STORAGE_ERROR;
     }
 
 
@@ -158,7 +172,7 @@ bool DeviceIdentity::setDeviceName(
     );
 
 
-    return true;
+    return NameUpdateResult::CHANGED;
 }
 
 
@@ -318,8 +332,8 @@ bool DeviceIdentity::isValidDeviceName(
     }
 
     for (size_t index = 0; index < name.length(); ++index) {
-        const char character =
-            name[index];
+        const unsigned char character =
+            static_cast<unsigned char>(name[index]);
 
         const bool isLetter =
             (
@@ -343,7 +357,8 @@ bool DeviceIdentity::isValidDeviceName(
             character == '_' ||
             character == '.' ||
             character == '(' ||
-            character == ')';
+            character == ')' ||
+            character >= 0x80;
 
         if (!allowed) {
             return false;

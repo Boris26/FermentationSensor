@@ -151,17 +151,18 @@ class PressureBubbleDetectorTests(unittest.TestCase):
         subprocess.run([str(self.executable)], check=True)
 
     def test_production_configuration_start_values(self):
+        sensor_config = (ROOT / "include/config/SensorConfig.h").read_text()
         for setting in (
-            "PRESSURE_CALIBRATION_MS = 300000",
-            "BUBBLE_MIN_TRIGGER_DELTA_PA = 0.50f",
-            "BUBBLE_NOISE_FACTOR = 5.0f",
-            "BUBBLE_RELEASE_FACTOR = 0.40f",
-            "BUBBLE_MIN_DURATION_MS = 100",
-            "BUBBLE_MAX_DURATION_MS = 3000",
-            "BUBBLE_REFRACTORY_MS = 500",
-            "PRESSURE_BASELINE_TRACKING_ALPHA = 0.001f",
+            "DEFAULT_CALIBRATION_MS = 300000",
+            "DEFAULT_MIN_TRIGGER_DELTA_PA = 0.50f",
+            "DEFAULT_NOISE_FACTOR = 5.0f",
+            "DEFAULT_RELEASE_FACTOR = 0.40f",
+            "DEFAULT_MIN_DURATION_MS = 100",
+            "DEFAULT_MAX_DURATION_MS = 3000",
+            "DEFAULT_REFRACTORY_MS = 500",
+            "DEFAULT_BASELINE_TRACKING_ALPHA = 0.001f",
         ):
-            self.assertIn(setting, CONFIG)
+            self.assertIn(setting, sensor_config)
 
     def test_session_edges_control_pressure_processing(self):
         button = MAIN.index("measurementSession.handleButtonPress();")
