@@ -25,9 +25,14 @@ constexpr unsigned long TEMPERATURE_INTERVAL_MS = 60000;
 constexpr float TEMPERATURE_SEND_DELTA_C = 1.0f;
 
 
-// Pressure diagnostics
+// Pressure sampling and diagnostics
 constexpr unsigned long PRESSURE_SAMPLE_INTERVAL_MS = 100;
+// Event diagnostics are useful during normal operation and are independent of
+// the high-frequency raw sample stream.
 constexpr bool PRESSURE_DIAGNOSTICS_ENABLED = true;
+// Enable only temporarily for sensor development/calibration. This emits one
+// PRESSURE,<millis>,<pressure> line for every pressure sample.
+constexpr bool PRESSURE_RAW_DIAGNOSTICS_ENABLED = false;
 
 // Pressure calibration and technical bubble detection
 constexpr unsigned long PRESSURE_CALIBRATION_MS = 300000;

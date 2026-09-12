@@ -104,13 +104,16 @@ void PressureSensor::update()
 
     if (bubbleDetected) _bubbleActivityAggregator.recordBubble();
 
-    if (PRESSURE_DIAGNOSTICS_ENABLED)
+    if (PRESSURE_RAW_DIAGNOSTICS_ENABLED)
     {
         Serial.print("PRESSURE,");
         Serial.print(now);
         Serial.print(',');
         Serial.println(_pressurePa, 2);
+    }
 
+    if (PRESSURE_DIAGNOSTICS_ENABLED)
+    {
         if (!wasCalibrated && _bubbleDetector.isCalibrated())
         {
             Serial.print("PRESSURE_CALIBRATED,baseline=");
