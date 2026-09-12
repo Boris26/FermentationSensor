@@ -17,22 +17,39 @@ class PressureDiagnosticsTests(unittest.TestCase):
         self.assertIn("PRESSURE_SAMPLE_INTERVAL_MS", PRESSURE)
         self.assertNotIn("READ_INTERVAL_MS", PRESSURE)
 
-    def test_diagnostics_can_be_disabled_without_disabling_sampling(self):
+    def test_raw_diagnostics_are_disabled_without_disabling_sampling(self):
         self.assertIn("PRESSURE_DIAGNOSTICS_ENABLED", CONFIG)
+        self.assertIn("PRESSURE_RAW_DIAGNOSTICS_ENABLED = false", CONFIG)
         assignment = PRESSURE.index("_pressurePa =")
-        diagnostics = PRESSURE.index("if (PRESSURE_DIAGNOSTICS_ENABLED)")
-        self.assertLess(assignment, diagnostics)
+        raw_diagnostics = PRESSURE.index(
+            "if (PRESSURE_RAW_DIAGNOSTICS_ENABLED)"
+        )
+        self.assertLess(assignment, raw_diagnostics)
 
     def test_pressure_update_remains_non_blocking(self):
         self.assertIn("now - lastReadMs <", PRESSURE)
         self.assertNotIn("delay(", PRESSURE)
         self.assertNotIn("while (", PRESSURE)
 
-    def test_machine_readable_line_has_only_required_fields(self):
-        self.assertIn('Serial.print("PRESSURE,");', PRESSURE)
-        self.assertIn("Serial.print(now);", PRESSURE)
-        self.assertIn("Serial.println(_pressurePa, 2);", PRESSURE)
+    def test_raw_line_is_isolated_behind_its_opt_in_flag(self):
+        raw_start = PRESSURE.index("if (PRESSURE_RAW_DIAGNOSTICS_ENABLED)")
+        event_start = PRESSURE.index("if (PRESSURE_DIAGNOSTICS_ENABLED)")
+        raw_diagnostics = PRESSURE[raw_start:event_start]
+        self.assertIn('Serial.print("PRESSURE,");', raw_diagnostics)
+        self.assertIn("Serial.print(now);", raw_diagnostics)
+        self.assertIn("Serial.println(_pressurePa, 2);", raw_diagnostics)
         self.assertNotIn("data.temperature", PRESSURE)
+
+    def test_event_diagnostics_remain_enabled_independently(self):
+        self.assertIn("PRESSURE_DIAGNOSTICS_ENABLED = true", CONFIG)
+        event_start = PRESSURE.index("if (PRESSURE_DIAGNOSTICS_ENABLED)")
+        events = PRESSURE[event_start:]
+        for event in (
+            'Serial.print("PRESSURE_CALIBRATED,baseline=");',
+            'Serial.print("BUBBLE,");',
+            'Serial.print("BUBBLE_WINDOW,");',
+        ):
+            self.assertIn(event, events)
 
     def test_pressure_sampling_remains_running_session_only(self):
         update = MAIN.index("pressureSensor.update();")
