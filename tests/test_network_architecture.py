@@ -9,6 +9,7 @@ import unittest
 
 ROOT = Path(__file__).parents[1]
 MAIN = (ROOT / "src/main.cpp").read_text()
+CONNECTION_MANAGER = (ROOT / "src/app/GatewayConnectionManager.cpp").read_text()
 DISCOVERY = (ROOT / "src/network/GatewayDiscovery.cpp").read_text()
 CLIENT = (ROOT / "src/network/ServerClient.cpp").read_text()
 ENDPOINT = (ROOT / "include/network/GatewayEndpoint.h").read_text()
@@ -36,8 +37,22 @@ class NetworkArchitectureTests(unittest.TestCase):
 
     def test_endpoint_validation(self):
         for check in ('port == 0', '!path.startsWith("/")',
-                      'protocolVersion != 1', 'parsed.fromString(address.c_str())'):
+                      'protocolVersion != 1', 'parsed.fromString(address.c_str())',
+                      'parsed != IPAddress()'):
             self.assertIn(check, ENDPOINT)
+
+    def test_unspecified_ipv4_is_not_a_valid_endpoint(self):
+        parse = ENDPOINT.index("parsed.fromString(address.c_str())")
+        reject_unspecified = ENDPOINT.index("parsed != IPAddress()", parse)
+        self.assertGreater(reject_unspecified, parse)
+
+    def test_valid_lan_ipv4_is_not_restricted(self):
+        start = ENDPOINT.index("bool isValid() const")
+        validation = ENDPOINT[
+            start:ENDPOINT.index("\n    }", start)
+        ]
+        self.assertIn("parsed.fromString(address.c_str())", validation)
+        self.assertNotIn("192.168.", validation)
 
     def test_dns_sd_records_and_service_type(self):
         for token in ('_brewferment._tcp.local', 'DNS_PTR', 'DNS_SRV',
@@ -50,6 +65,25 @@ class NetworkArchitectureTests(unittest.TestCase):
         self.assertIn("candidate.port = _port", DISCOVERY)
         self.assertIn("if (!candidate.isValid()) return", DISCOVERY)
 
+    def test_ptr_srv_txt_without_a_record_cannot_complete(self):
+        completion = DISCOVERY[DISCOVERY.index("void GatewayDiscovery::tryComplete()") :]
+        address_guard = completion.index("if (_address == IPAddress()) return;")
+        result = completion.index("_hasResult = true;")
+        self.assertLess(address_guard, result)
+
+    def test_discovery_keeps_querying_until_a_record_arrives(self):
+        self.assertIn("else if (_address == IPAddress()) sendQuery(_host, DNS_A);", DISCOVERY)
+        self.assertIn(
+            "_address = IPAddress(data[offset], data[offset + 1], "
+            "data[offset + 2], data[offset + 3]);",
+            DISCOVERY,
+        )
+        completion = DISCOVERY[DISCOVERY.index("void GatewayDiscovery::tryComplete()") :]
+        self.assertLess(
+            completion.index("if (_address == IPAddress()) return;"),
+            completion.index("candidate.address = _address.toString();"),
+        )
+
     def test_no_service_times_out_non_blocking(self):
         self.assertIn("DISCOVERY_TIMEOUT_MS", DISCOVERY)
         self.assertNotIn("delay(", DISCOVERY)
@@ -59,6 +93,15 @@ class NetworkArchitectureTests(unittest.TestCase):
         save = MAIN.index("gatewayEndpointStore.save(discovered)")
         connect = MAIN.index("serverClient.begin(discovered)")
         self.assertLess(save, connect)
+
+    def test_unspecified_legacy_cache_is_ignored_and_replaced(self):
+        self.assertIn("return endpoint.isValid() ? endpoint : GatewayEndpoint{};", STORE)
+        self.assertIn("if (cached.isValid())", CONNECTION_MANAGER)
+        self.assertIn("} else {\n            startDiscovery();", CONNECTION_MANAGER)
+        self.assertLess(
+            CONNECTION_MANAGER.index("_endpointStore.save(discovered)"),
+            CONNECTION_MANAGER.index("_serverClient.begin(discovered)"),
+        )
 
     def test_runtime_endpoint_retried_before_rediscovery(self):
         update = MAIN.index("serverClient.update()")

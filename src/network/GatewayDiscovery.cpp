@@ -172,6 +172,11 @@ void GatewayDiscovery::parsePacket(const uint8_t* data, size_t length)
 
 void GatewayDiscovery::tryComplete()
 {
+    // IPAddress() is 0.0.0.0. PTR/SRV/TXT records can arrive before the A
+    // record, so do not turn the initial value (or an unusable A record) into
+    // a completed endpoint. update() will keep querying the host for DNS_A.
+    if (_address == IPAddress()) return;
+
     GatewayEndpoint candidate;
     candidate.address = _address.toString();
     candidate.port = _port;
