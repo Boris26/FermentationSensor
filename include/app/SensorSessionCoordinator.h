@@ -37,6 +37,8 @@ private:
     void initializeSessionIfSensorsReady();
     void queueTemperatureIfEligible(bool sequenceReady, bool newMeasurement);
     void handleStopMeasurementRequests();
+    void handleMeasurementAssignments();
+    void resetSessionRuntime(bool clearAssignment);
 
     TemperatureSensor& _temperatureSensor;
     PressureSensor& _pressureSensor;

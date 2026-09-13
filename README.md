@@ -64,7 +64,8 @@ WiFi
   -> Endpoint als Cache speichern
   -> WebSocket
   -> REGISTER_SENSOR
-  -> REGISTER_SENSOR_ACK (mit zugeordneter beerId)
+  -> REGISTER_SENSOR_ACK (optional mit zugeordneter beerId)
+  -> ASSIGN_MEASUREMENT (manuelle FinishedBeer-Zuordnung)
   -> Measurements
 ```
 
@@ -97,7 +98,15 @@ Der `ServerClient` verwendet weiterhin `ArduinoHttpClient`/`WebSocketClient` und
 {"type":"REGISTER_SENSOR","deviceId":"<persistente UUID>","deviceName":"<Name>"}
 ```
 
-Messdaten dürfen erst nach `{"type":"REGISTER_SENSOR_ACK","beerId":"<FinishedBeer-ID>"}` gesendet werden. Die `beerId` stammt aus der bereits im Backend vorhandenen Sensorzuordnung. Sie können jedoch bereits vorher in die gemeinsame Measurement-Outbox eingestellt werden. Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff bleiben aktiv.
+`REGISTERED` bezeichnet ausschließlich die technische Anmeldung am Gateway. Ein
+`REGISTER_SENSOR_ACK` darf optional weiterhin eine gültige `beerId` enthalten und
+stellt dann zusätzlich den Runtime-Zustand `ASSIGNED` her. Ohne `beerId` wird kein
+Zuordnungskontext erfunden. `ASSIGNED` bedeutet, dass der Sensor einen
+FinishedBeer-Kontext besitzt; dieser Kontext wird nicht im Flash gespeichert.
+Messdaten können bereits vor der Registrierung in die gemeinsame Measurement-Outbox
+eingestellt werden, werden aber erst bei registrierter Verbindung übertragen.
+Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff
+bleiben aktiv.
 
 Beim ersten lokalen Wechsel von `IDLE` nach `RUNNING` sendet die Firmware zusätzlich
 `POST /finishedbeer/<beerId>/start-fermentation` ohne Request-Body an den ermittelten
@@ -106,7 +115,49 @@ enthält dafür keine eigene fachliche Zustandslogik. Fehler werden mit begrenzt
 exponentiellem Backoff wiederholt und sind von WebSocket, Messwerten und deren ACKs
 isoliert. Resume und Reconnect erzeugen keinen weiteren fachlichen Start.
 
-### Messsession: Pause und fachliches Ende
+### Assignment und Messsession
+
+Das Gateway kann über die bestehende registrierte WebSocket-Verbindung einen neuen
+FinishedBeer-Kontext setzen:
+
+```json
+{"type":"ASSIGN_MEASUREMENT","beerId":"<FinishedBeer-ID>"}
+```
+
+Eine gültige Zuordnung wird über dieselbe Verbindung bestätigt:
+
+```json
+{"type":"ASSIGN_MEASUREMENT_ACK","beerId":"<FinishedBeer-ID>"}
+```
+
+Die ID muss aus ASCII-Buchstaben, Ziffern, Bindestrich oder Unterstrich bestehen,
+damit sie später sicher als HTTP-Pfadsegment verwendet werden kann. Fehlende, leere,
+nicht als String codierte oder anderweitig ungültige IDs werden nicht übernommen und
+nicht bestätigt. Das Kommando verändert weder Verbindung und Registrierung noch
+`deviceId` oder `deviceName`.
+
+Die Zustände sind fachlich klar getrennt:
+
+* `REGISTERED`: technisch am Gateway angemeldet.
+* `ASSIGNED`: gültiger FinishedBeer-Kontext ist zur Laufzeit vorhanden.
+* `IDLE`: einem Bier zugeordnet, aber noch keine aktive Messsession.
+* `RUNNING`: aktive Messsession; erst der physische Tastendruck startet sie.
+* `PAUSED`: aktive Messsession ist temporär pausiert.
+* `STOP`: Session-Runtime und Assignment-Kontext werden entfernt.
+
+`ASSIGN_MEASUREMENT` startet ausdrücklich weder Messung noch Gärung, setzt nicht
+`RUNNING` und stößt keine Druckkalibrierung an. Erst der spätere physische Wechsel
+`IDLE -> RUNNING` fordert für die zugeordnete ID einmalig
+`POST /finishedbeer/<beerId>/start-fermentation` an.
+
+Ein identisches Assignment im Zustand `IDLE` ist idempotent: Es bleibt vollständig
+erhalten und wird erneut bestätigt. Bei einem Wechsel auf eine andere ID sowie bei
+einem Assignment während `RUNNING` oder `PAUSED` wird dagegen zuerst derselbe
+zentrale vollständige Runtime-Reset wie bei STOP ausgeführt. Dadurch werden alte
+Outbox-Einträge, Temperaturvergleichswerte, Druck-/Bubble-Zustand und der
+FermentationStarter gelöscht, bevor die neue ID gesetzt wird. Die persistente
+Measurement-Sequence wird dabei ausdrücklich nicht zurückgesetzt oder
+wiederverwendet.
 
 Der physische Taster schaltet unverändert `IDLE -> RUNNING`, `RUNNING -> PAUSED`
 und `PAUSED -> RUNNING`. `PAUSED` ist nur eine temporäre Unterbrechung: dieselbe
@@ -131,12 +182,10 @@ Outbox-Daten noch ein altes fertiges Bubble-Fenster können später übertragen
 werden.
 
 STOP löscht auch die im RAM gehaltene `finishedBeerId`, damit eine neue Session
-nicht versehentlich die Zuordnung der beendeten Gärung verwendet. Das bestehende
-Protokoll liefert diese Zuordnung nur mit `REGISTER_SENSOR_ACK`. Das Gateway muss
-daher in einer Folgeänderung vor dem Start einer neuen Session einen neuen
-Assignment-/Registrierungsablauf bereitstellen. Ein neues Assignment-Protokoll
-und Änderungen an Gateway oder BeerDataStore sind bewusst nicht Bestandteil
-dieser Firmware-Änderung.
+nicht versehentlich die Zuordnung der beendeten Gärung verwendet. Eine spätere
+Zuordnung kann über `ASSIGN_MEASUREMENT` erfolgen; Änderungen zur Auslieferung dieses
+Kommandos in Gateway, BeerDataStore oder UI sind bewusst nicht Bestandteil dieser
+Firmware-Änderung.
 
 Die beiden gepufferten Sensor-Nachrichten werden vollständig so übertragen (das Druckfeld der Temperatur ist optional):
 

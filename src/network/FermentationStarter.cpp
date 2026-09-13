@@ -29,7 +29,7 @@ void FermentationStarter::update()
     if (!_requested || _completed || !_serverClient.isRegistered()) return;
 
     const String& beerId = _serverClient.finishedBeerId();
-    if (!isSafePathSegment(beerId)) return;
+    if (!ServerClient::isSafeFinishedBeerId(beerId)) return;
 
     const unsigned long now = millis();
     if (static_cast<long>(now - _nextAttemptMs) < 0) return;
@@ -73,15 +73,4 @@ bool FermentationStarter::postStart(const String& beerId)
     Serial.print("FermentationStarter: BeerDataStore status=");
     Serial.println(status);
     return false;
-}
-
-bool FermentationStarter::isSafePathSegment(const String& value)
-{
-    if (value.isEmpty()) return false;
-    for (size_t i = 0; i < value.length(); ++i) {
-        const char c = value[i];
-        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-              (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
-    }
-    return true;
 }

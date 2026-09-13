@@ -19,8 +19,6 @@ public:
 
 private:
     bool postStart(const String& beerId);
-    static bool isSafePathSegment(const String& value);
-
     ServerClient& _serverClient;
     WiFiClient _wifiClient;
     bool _requested = false;

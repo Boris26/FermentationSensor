@@ -150,6 +150,32 @@ bool ServerClient::sendStopMeasurementAck()
     );
 }
 
+bool ServerClient::takeMeasurementAssignment(String& beerId)
+{
+    if (!_hasPendingMeasurementAssignment) return false;
+    beerId = _pendingMeasurementAssignment;
+    _pendingMeasurementAssignment = "";
+    _hasPendingMeasurementAssignment = false;
+    return true;
+}
+
+bool ServerClient::assignFinishedBeerContext(const String& beerId)
+{
+    if (!isSafeFinishedBeerId(beerId)) return false;
+    _finishedBeerId = beerId;
+    return true;
+}
+
+bool ServerClient::sendAssignMeasurementAck(const String& beerId)
+{
+    if (!isSafeFinishedBeerId(beerId)) return false;
+    return sendTextMessage(
+        String("{\"type\":\"ASSIGN_MEASUREMENT_ACK\",\"beerId\":\"") +
+            beerId + "\"}",
+        "measurement assignment ACK"
+    );
+}
+
 void ServerClient::clearFinishedBeerContext()
 {
     _finishedBeerId = "";
@@ -576,7 +602,7 @@ void ServerClient::handleMessage(
         if (!_registered) {
             String finishedBeerId;
             if (parseStringField(message, "beerId", finishedBeerId)) {
-                _finishedBeerId = finishedBeerId;
+                assignFinishedBeerContext(finishedBeerId);
             }
             _registered = true;
 
@@ -600,10 +626,34 @@ void ServerClient::handleMessage(
     }
 
 
+    if (type == "ASSIGN_MEASUREMENT") {
+        String beerId;
+        if (!parseStringField(message, "beerId", beerId) ||
+            !isSafeFinishedBeerId(beerId)) {
+            Serial.println("ServerClient: invalid measurement assignment.");
+            return;
+        }
+        _pendingMeasurementAssignment = beerId;
+        _hasPendingMeasurementAssignment = true;
+        return;
+    }
+
+
     Serial.print(
         "ServerClient: unknown message type: "
     );
     Serial.println(type);
+}
+
+bool ServerClient::isSafeFinishedBeerId(const String& value)
+{
+    if (value.isEmpty()) return false;
+    for (size_t i = 0; i < value.length(); ++i) {
+        const char c = value[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+    }
+    return true;
 }
 
 bool ServerClient::parseStringField(
