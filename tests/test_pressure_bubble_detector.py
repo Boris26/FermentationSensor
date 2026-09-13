@@ -128,6 +128,16 @@ class PressureBubbleDetectorTests(unittest.TestCase):
                 calibrationPause.processSample(14000, 10.0f);
                 assert(calibrationPause.isCalibrated());
 
+                // STOP removes calibration, baseline and old bubble count. The
+                // next RUNNING edge starts a completely fresh calibration.
+                quiet.resetSession();
+                assert(!quiet.isCalibrated());
+                assert(!quiet.isCalibrating());
+                assert(quiet.totalBubbleCount() == 0);
+                assert(quiet.baselinePa() == 0.0f);
+                quiet.onRunning(20000);
+                assert(quiet.isCalibrating());
+
                 // A new instance always starts without persisted calibration.
                 PressureBubbleDetector restarted(config());
                 assert(!restarted.isCalibrated());

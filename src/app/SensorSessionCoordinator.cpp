@@ -7,6 +7,7 @@
 #include "input/MeasurementButton.h"
 #include "network/TemperatureTransmissionPolicy.h"
 #include "network/FermentationStarter.h"
+#include "network/ServerClient.h"
 #include "sensors/PressureSensor.h"
 #include "sensors/TemperatureSensor.h"
 
@@ -15,10 +16,11 @@ SensorSessionCoordinator::SensorSessionCoordinator(
     MeasurementButton& button, MeasurementSession& session,
     TemperatureTransmissionPolicy& temperaturePolicy,
     MeasurementTransport& transport, FermentationStarter& fermentationStarter,
-    StatusController& status
+    StatusController& status, ServerClient& serverClient
 ) : _temperatureSensor(temperatureSensor), _pressureSensor(pressureSensor),
     _button(button), _session(session), _temperaturePolicy(temperaturePolicy),
-    _transport(transport), _fermentationStarter(fermentationStarter), _status(status)
+    _transport(transport), _fermentationStarter(fermentationStarter), _status(status),
+    _serverClient(serverClient)
 {
 }
 
@@ -96,6 +98,7 @@ void SensorSessionCoordinator::updateInput()
 
 void SensorSessionCoordinator::updateSessionInput()
 {
+    handleStopMeasurementRequests();
     if (_sessionInitialized && _button.wasPressed()) {
         _session.handleButtonPress();
         const MeasurementState current = _session.getState();
@@ -112,4 +115,20 @@ void SensorSessionCoordinator::updateSessionInput()
         }
     }
     if (_sessionInitialized && _session.isRunning()) _pressureSensor.update();
+}
+
+void SensorSessionCoordinator::handleStopMeasurementRequests()
+{
+    while (_serverClient.takeStopMeasurementRequest()) {
+        _session.stop();
+        _transport.resetRuntimeState();
+        _temperaturePolicy.resetRuntimeState();
+        _pressureSensor.onSessionStopped();
+        _fermentationStarter.resetSession();
+        _serverClient.clearFinishedBeerContext();
+        _lastState = MeasurementState::IDLE;
+        _status.showMeasurementState(MeasurementState::IDLE);
+        _serverClient.sendStopMeasurementAck();
+        Serial.println("Measurement session stopped.");
+    }
 }

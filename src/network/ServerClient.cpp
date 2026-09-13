@@ -136,6 +136,25 @@ const String& ServerClient::finishedBeerId() const
     return _finishedBeerId;
 }
 
+bool ServerClient::takeStopMeasurementRequest()
+{
+    if (_pendingStopMeasurementRequests == 0) return false;
+    --_pendingStopMeasurementRequests;
+    return true;
+}
+
+bool ServerClient::sendStopMeasurementAck()
+{
+    return sendTextMessage(
+        "{\"type\":\"STOP_MEASUREMENT_ACK\"}", "measurement stop ACK"
+    );
+}
+
+void ServerClient::clearFinishedBeerContext()
+{
+    _finishedBeerId = "";
+}
+
 const GatewayEndpoint& ServerClient::endpoint() const
 {
     return _endpoint;
@@ -570,6 +589,13 @@ void ServerClient::handleMessage(
         }
 
 
+        return;
+    }
+
+    if (type == "STOP_MEASUREMENT") {
+        if (_pendingStopMeasurementRequests < 255) {
+            ++_pendingStopMeasurementRequests;
+        }
         return;
     }
 

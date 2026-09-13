@@ -32,6 +32,11 @@ void MeasurementSession::handleButtonPress()
     }
 }
 
+void MeasurementSession::stop()
+{
+    setState(MeasurementState::IDLE);
+}
+
 MeasurementState
 MeasurementSession::getState() const
 {

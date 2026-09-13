@@ -13,6 +13,7 @@ public:
     void update();
     void onSessionRunning();
     void onSessionPaused();
+    void onSessionStopped();
     void applyConfig(const SensorConfig& config);
 
     bool isAvailable() const;

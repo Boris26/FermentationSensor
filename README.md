@@ -106,6 +106,38 @@ enthält dafür keine eigene fachliche Zustandslogik. Fehler werden mit begrenzt
 exponentiellem Backoff wiederholt und sind von WebSocket, Messwerten und deren ACKs
 isoliert. Resume und Reconnect erzeugen keinen weiteren fachlichen Start.
 
+### Messsession: Pause und fachliches Ende
+
+Der physische Taster schaltet unverändert `IDLE -> RUNNING`, `RUNNING -> PAUSED`
+und `PAUSED -> RUNNING`. `PAUSED` ist nur eine temporäre Unterbrechung: dieselbe
+Messsession und ihre fachliche Zuordnung bestehen weiter; Druckkalibrierung und
+Bubble-Aktivitätsfenster werden beim Resume fortgesetzt.
+
+Das fachliche Ende wird ausschließlich über die bestehende WebSocket-Verbindung
+mit `{"type":"STOP_MEASUREMENT"}` ausgelöst. Das Kommando ist in `RUNNING`,
+`PAUSED` und `IDLE` sicher und idempotent. Es setzt den Zustand auf `IDLE`, leert
+die RAM-Outbox einschließlich unbestätigter Messwerte und setzt Temperaturpolicy,
+Druckkalibrierung/Baseline, Bubble-Zähler/-Fenster und den Runtime-/Retry-Zustand
+des FermentationStarters zurück. Jedes verarbeitete Kommando wird über denselben
+WebSocket mit `{"type":"STOP_MEASUREMENT_ACK"}` bestätigt.
+
+WLAN, WebSocket, Registrierung und technische Konfiguration bleiben aktiv.
+Device Identity, WLAN-/Sensor-Konfiguration und der persistente
+Measurement-Sequence-Allocator bleiben unverändert; die erste Nachricht einer
+neuen Session erhält die nächste freie Sequence. Beim nächsten lokalen
+`IDLE -> RUNNING` beginnt eine frische Druckkalibrierung, und die erste Temperatur
+wird nicht durch einen Vergleichswert der alten Session unterdrückt. Weder alte
+Outbox-Daten noch ein altes fertiges Bubble-Fenster können später übertragen
+werden.
+
+STOP löscht auch die im RAM gehaltene `finishedBeerId`, damit eine neue Session
+nicht versehentlich die Zuordnung der beendeten Gärung verwendet. Das bestehende
+Protokoll liefert diese Zuordnung nur mit `REGISTER_SENSOR_ACK`. Das Gateway muss
+daher in einer Folgeänderung vor dem Start einer neuen Session einen neuen
+Assignment-/Registrierungsablauf bereitstellen. Ein neues Assignment-Protokoll
+und Änderungen an Gateway oder BeerDataStore sind bewusst nicht Bestandteil
+dieser Firmware-Änderung.
+
 Die beiden gepufferten Sensor-Nachrichten werden vollständig so übertragen (das Druckfeld der Temperatur ist optional):
 
 ```json

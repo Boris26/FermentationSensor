@@ -40,6 +40,9 @@ public:
     bool sendMeasurement(const OutboxEntry& measurement, uint32_t nowMs);
 
     bool takeMeasurementAcknowledgement(uint32_t& sequence);
+    bool takeStopMeasurementRequest();
+    bool sendStopMeasurementAck();
+    void clearFinishedBeerContext();
 
 
 private:
@@ -95,6 +98,7 @@ private:
     String _finishedBeerId;
     bool _hasMeasurementAcknowledgement = false;
     uint32_t _measurementAcknowledgementSequence = 0;
+    uint8_t _pendingStopMeasurementRequests = 0;
 
     uint8_t _failedConnectionCycles = 0;
 

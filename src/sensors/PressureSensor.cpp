@@ -182,6 +182,15 @@ void PressureSensor::onSessionPaused()
     }
 }
 
+void PressureSensor::onSessionStopped()
+{
+    _bubbleDetector.resetSession();
+    _bubbleActivityAggregator.reset();
+    _diagnosedWindowRevision = 0;
+    _lastReadMs = 0;
+    _pressurePa = 0.0f;
+}
+
 
 bool PressureSensor::isAvailable() const
 {
