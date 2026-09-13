@@ -56,6 +56,12 @@ class MeasurementStopTests(unittest.TestCase):
     def test_stop_resets_every_session_runtime_component_before_ack(self):
         stop = COORDINATOR[COORDINATOR.index(
             "void SensorSessionCoordinator::handleStopMeasurementRequests()"
+        ):COORDINATOR.index(
+            "void SensorSessionCoordinator::handleMeasurementAssignments()"
+        )]
+        self.assertIn("resetSessionRuntime(true);", stop)
+        reset = COORDINATOR[COORDINATOR.index(
+            "void SensorSessionCoordinator::resetSessionRuntime(bool clearAssignment)"
         ):]
         operations = [
             "_session.stop();",
@@ -63,19 +69,22 @@ class MeasurementStopTests(unittest.TestCase):
             "_temperaturePolicy.resetRuntimeState();",
             "_pressureSensor.onSessionStopped();",
             "_fermentationStarter.resetSession();",
-            "_serverClient.clearFinishedBeerContext();",
             "_status.showMeasurementState(MeasurementState::IDLE);",
-            "_serverClient.sendStopMeasurementAck();",
         ]
-        positions = [stop.index(operation) for operation in operations]
+        positions = [reset.index(operation) for operation in operations]
         self.assertEqual(positions, sorted(positions))
+        self.assertIn("if (clearAssignment) _serverClient.clearFinishedBeerContext();", reset)
+        self.assertLess(stop.index("resetSessionRuntime(true);"),
+                        stop.index("_serverClient.sendStopMeasurementAck();"))
 
     def test_protocol_ack_and_connection_are_preserved(self):
         self.assertIn('type == "STOP_MEASUREMENT"', CLIENT)
         self.assertIn('"{\\"type\\":\\"STOP_MEASUREMENT_ACK\\"}"', CLIENT)
         stop = COORDINATOR[COORDINATOR.index(
             "void SensorSessionCoordinator::handleStopMeasurementRequests()"
-        ):]
+        ):COORDINATOR.index(
+            "void SensorSessionCoordinator::handleMeasurementAssignments()"
+        )]
         self.assertNotIn("disconnect()", stop)
         self.assertNotIn(".stop()", stop.replace("_session.stop()", ""))
         self.assertIn("_serverClient", APPLICATION)
@@ -83,7 +92,9 @@ class MeasurementStopTests(unittest.TestCase):
     def test_sequence_allocator_and_persistent_state_are_not_reset(self):
         stop = COORDINATOR[COORDINATOR.index(
             "void SensorSessionCoordinator::handleStopMeasurementRequests()"
-        ):]
+        ):COORDINATOR.index(
+            "void SensorSessionCoordinator::handleMeasurementAssignments()"
+        )]
         self.assertNotIn("Sequence", stop)
         self.assertNotIn("factoryReset", stop)
         self.assertNotIn("Flash", stop)

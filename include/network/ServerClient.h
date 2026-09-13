@@ -42,7 +42,12 @@ public:
     bool takeMeasurementAcknowledgement(uint32_t& sequence);
     bool takeStopMeasurementRequest();
     bool sendStopMeasurementAck();
+    bool takeMeasurementAssignment(String& beerId);
+    bool assignFinishedBeerContext(const String& beerId);
+    bool sendAssignMeasurementAck(const String& beerId);
     void clearFinishedBeerContext();
+
+    static bool isSafeFinishedBeerId(const String& beerId);
 
 
 private:
@@ -99,6 +104,8 @@ private:
     bool _hasMeasurementAcknowledgement = false;
     uint32_t _measurementAcknowledgementSequence = 0;
     uint8_t _pendingStopMeasurementRequests = 0;
+    bool _hasPendingMeasurementAssignment = false;
+    String _pendingMeasurementAssignment;
 
     uint8_t _failedConnectionCycles = 0;
 

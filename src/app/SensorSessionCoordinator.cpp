@@ -99,6 +99,7 @@ void SensorSessionCoordinator::updateInput()
 void SensorSessionCoordinator::updateSessionInput()
 {
     handleStopMeasurementRequests();
+    handleMeasurementAssignments();
     if (_sessionInitialized && _button.wasPressed()) {
         _session.handleButtonPress();
         const MeasurementState current = _session.getState();
@@ -120,15 +121,40 @@ void SensorSessionCoordinator::updateSessionInput()
 void SensorSessionCoordinator::handleStopMeasurementRequests()
 {
     while (_serverClient.takeStopMeasurementRequest()) {
-        _session.stop();
-        _transport.resetRuntimeState();
-        _temperaturePolicy.resetRuntimeState();
-        _pressureSensor.onSessionStopped();
-        _fermentationStarter.resetSession();
-        _serverClient.clearFinishedBeerContext();
-        _lastState = MeasurementState::IDLE;
-        _status.showMeasurementState(MeasurementState::IDLE);
+        resetSessionRuntime(true);
         _serverClient.sendStopMeasurementAck();
         Serial.println("Measurement session stopped.");
     }
+}
+
+void SensorSessionCoordinator::handleMeasurementAssignments()
+{
+    String beerId;
+    while (_serverClient.takeMeasurementAssignment(beerId)) {
+        const bool unchangedIdleAssignment =
+            _session.getState() == MeasurementState::IDLE &&
+            _serverClient.finishedBeerId() == beerId;
+
+        if (!unchangedIdleAssignment) {
+            // Also reset an IDLE assignment change: buffered measurements and
+            // detector/starter history must never cross the beer boundary.
+            resetSessionRuntime(true);
+            if (!_serverClient.assignFinishedBeerContext(beerId)) continue;
+        }
+
+        _serverClient.sendAssignMeasurementAck(beerId);
+        Serial.println("Measurement assignment accepted; session remains IDLE.");
+    }
+}
+
+void SensorSessionCoordinator::resetSessionRuntime(bool clearAssignment)
+{
+    _session.stop();
+    _transport.resetRuntimeState();
+    _temperaturePolicy.resetRuntimeState();
+    _pressureSensor.onSessionStopped();
+    _fermentationStarter.resetSession();
+    if (clearAssignment) _serverClient.clearFinishedBeerContext();
+    _lastState = MeasurementState::IDLE;
+    _status.showMeasurementState(MeasurementState::IDLE);
 }
