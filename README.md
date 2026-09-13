@@ -108,12 +108,13 @@ eingestellt werden, werden aber erst bei registrierter Verbindung übertragen.
 Registration-Timeout, Größenprüfung, Sendefehlerbehandlung und Reconnect-Backoff
 bleiben aktiv.
 
-Beim ersten lokalen Wechsel von `IDLE` nach `RUNNING` sendet die Firmware zusätzlich
-`POST /finishedbeer/<beerId>/start-fermentation` ohne Request-Body an den ermittelten
-Backend-Endpoint. BeerDataStore setzt Status und `fermentationStartedAt`; die Firmware
-enthält dafür keine eigene fachliche Zustandslogik. Fehler werden mit begrenztem
-exponentiellem Backoff wiederholt und sind von WebSocket, Messwerten und deren ACKs
-isoliert. Resume und Reconnect erzeugen keinen weiteren fachlichen Start.
+Beim lokalen Wechsel von `IDLE` nach `RUNNING` startet die Firmware ausschließlich
+die Messsession. Die Messwerte werden wie zuvor über die registrierte
+WebSocket-Verbindung übertragen. Der Sensor sendet keinen HTTP-Aufruf zum Starten
+der Gärung. Nachdem der Gateway die erste zugeordnete Messung erfolgreich über
+BeerDataStore gespeichert hat und dadurch die `beerId` kennt, startet der Gateway
+die Gärung über seinen eigenen BackendClient. Pause/Resume und Reconnect ändern
+diesen Ablauf nicht.
 
 ### Assignment und Messsession
 
@@ -130,11 +131,10 @@ Eine gültige Zuordnung wird über dieselbe Verbindung bestätigt:
 {"type":"ASSIGN_MEASUREMENT_ACK","beerId":"<FinishedBeer-ID>"}
 ```
 
-Die ID muss aus ASCII-Buchstaben, Ziffern, Bindestrich oder Unterstrich bestehen,
-damit sie später sicher als HTTP-Pfadsegment verwendet werden kann. Fehlende, leere,
-nicht als String codierte oder anderweitig ungültige IDs werden nicht übernommen und
-nicht bestätigt. Das Kommando verändert weder Verbindung und Registrierung noch
-`deviceId` oder `deviceName`.
+Die ID muss aus ASCII-Buchstaben, Ziffern, Bindestrich oder Unterstrich bestehen.
+Fehlende, leere, nicht als String codierte oder anderweitig ungültige IDs werden
+nicht übernommen und nicht bestätigt. Das Kommando verändert weder Verbindung und
+Registrierung noch `deviceId` oder `deviceName`.
 
 Die Zustände sind fachlich klar getrennt:
 
@@ -147,15 +147,16 @@ Die Zustände sind fachlich klar getrennt:
 
 `ASSIGN_MEASUREMENT` startet ausdrücklich weder Messung noch Gärung, setzt nicht
 `RUNNING` und stößt keine Druckkalibrierung an. Erst der spätere physische Wechsel
-`IDLE -> RUNNING` fordert für die zugeordnete ID einmalig
-`POST /finishedbeer/<beerId>/start-fermentation` an.
+`IDLE -> RUNNING` startet die Messsession. Die erste erfolgreich gespeicherte,
+zugeordnete Messung veranlasst anschließend den Gateway, die Gärung über dessen
+BackendClient zu starten.
 
 Ein identisches Assignment im Zustand `IDLE` ist idempotent: Es bleibt vollständig
 erhalten und wird erneut bestätigt. Bei einem Wechsel auf eine andere ID sowie bei
 einem Assignment während `RUNNING` oder `PAUSED` wird dagegen zuerst derselbe
 zentrale vollständige Runtime-Reset wie bei STOP ausgeführt. Dadurch werden alte
-Outbox-Einträge, Temperaturvergleichswerte, Druck-/Bubble-Zustand und der
-FermentationStarter gelöscht, bevor die neue ID gesetzt wird. Die persistente
+Outbox-Einträge, Temperaturvergleichswerte und Druck-/Bubble-Zustand gelöscht,
+bevor die neue ID gesetzt wird. Die persistente
 Measurement-Sequence wird dabei ausdrücklich nicht zurückgesetzt oder
 wiederverwendet.
 
@@ -168,8 +169,8 @@ Das fachliche Ende wird ausschließlich über die bestehende WebSocket-Verbindun
 mit `{"type":"STOP_MEASUREMENT"}` ausgelöst. Das Kommando ist in `RUNNING`,
 `PAUSED` und `IDLE` sicher und idempotent. Es setzt den Zustand auf `IDLE`, leert
 die RAM-Outbox einschließlich unbestätigter Messwerte und setzt Temperaturpolicy,
-Druckkalibrierung/Baseline, Bubble-Zähler/-Fenster und den Runtime-/Retry-Zustand
-des FermentationStarters zurück. Jedes verarbeitete Kommando wird über denselben
+Druckkalibrierung/Baseline sowie Bubble-Zähler/-Fenster zurück. Jedes verarbeitete
+Kommando wird über denselben
 WebSocket mit `{"type":"STOP_MEASUREMENT_ACK"}` bestätigt.
 
 WLAN, WebSocket, Registrierung und technische Konfiguration bleiben aktiv.

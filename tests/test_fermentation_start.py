@@ -3,37 +3,40 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STARTER = (ROOT / "src/network/FermentationStarter.cpp").read_text()
 COORDINATOR = (ROOT / "src/app/SensorSessionCoordinator.cpp").read_text()
 APPLICATION = (ROOT / "src/app/FermentationSensorApplication.cpp").read_text()
 CLIENT = (ROOT / "src/network/ServerClient.cpp").read_text()
+TRANSPORT = (ROOT / "src/app/MeasurementTransport.cpp").read_text()
 
 
 class FermentationStartTests(unittest.TestCase):
-    def test_assigned_finished_beer_id_is_used_in_endpoint(self):
-        self.assertIn('parseStringField(message, "beerId", finishedBeerId)', CLIENT)
-        self.assertIn('const String& beerId = _serverClient.finishedBeerId();', STARTER)
-        self.assertIn('String("/finishedbeer/") + beerId +', STARTER)
-        self.assertIn('"/start-fermentation"', STARTER)
+    def test_idle_to_running_does_not_issue_direct_http_start(self):
+        sources = "\n".join(
+            path.read_text()
+            for directory in (ROOT / "src", ROOT / "include")
+            for path in directory.rglob("*")
+            if path.is_file()
+        )
+        self.assertNotIn("start-fermentation", sources)
+        self.assertNotIn("FermentationStarter", sources)
+        self.assertIn("_session.handleButtonPress();", COORDINATOR)
+        self.assertIn("current == MeasurementState::RUNNING", COORDINATOR)
 
-    def test_post_has_no_body(self):
-        self.assertIn("client.post(path);", STARTER)
-        self.assertNotIn("fermentationStartedAt", STARTER)
-        self.assertNotIn("Content-Type", STARTER)
-
-    def test_only_initial_idle_to_running_transition_requests_start(self):
-        transition = COORDINATOR.index("_lastState == MeasurementState::IDLE")
-        request = COORDINATOR.index("_fermentationStarter.requestStart();", transition)
-        self.assertLess(transition, request)
-        self.assertIn("if (_requested) return;", STARTER)
-        self.assertNotIn("requestStart", CLIENT)
-
-    def test_http_failure_isolated_from_measurement_connection_and_ack(self):
-        self.assertIn("_fermentationStarter.update();", APPLICATION)
+    def test_measurement_transport_remains_active_after_session_input(self):
+        session_input = APPLICATION.index("_sensorSession.updateSessionInput();")
+        transport_update = APPLICATION.index(
+            "_measurementTransport.update(_measurementSequenceReady);"
+        )
+        self.assertLess(session_input, transport_update)
         self.assertIn("_measurementTransport.update(_measurementSequenceReady);", APPLICATION)
-        self.assertNotIn("disconnect()", STARTER)
-        self.assertNotIn("requestReconnect", STARTER)
-        self.assertIn("_nextAttemptMs = now + _retryIntervalMs;", STARTER)
+
+    def test_existing_websocket_measurement_flow_is_unchanged(self):
+        self.assertIn("_serverClient.sendMeasurement(pending", TRANSPORT)
+        self.assertIn(
+            "_serverClient.takeMeasurementAcknowledgement(acknowledgedSequence)",
+            TRANSPORT,
+        )
+        self.assertIn('consume("\\\"MEASUREMENT_ACK\\\"")', CLIENT)
 
 
 if __name__ == "__main__":
