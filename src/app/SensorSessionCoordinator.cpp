@@ -6,7 +6,6 @@
 #include "config/Config.h"
 #include "input/MeasurementButton.h"
 #include "network/TemperatureTransmissionPolicy.h"
-#include "network/FermentationStarter.h"
 #include "network/ServerClient.h"
 #include "sensors/PressureSensor.h"
 #include "sensors/TemperatureSensor.h"
@@ -15,12 +14,11 @@ SensorSessionCoordinator::SensorSessionCoordinator(
     TemperatureSensor& temperatureSensor, PressureSensor& pressureSensor,
     MeasurementButton& button, MeasurementSession& session,
     TemperatureTransmissionPolicy& temperaturePolicy,
-    MeasurementTransport& transport, FermentationStarter& fermentationStarter,
-    StatusController& status, ServerClient& serverClient
+    MeasurementTransport& transport, StatusController& status,
+    ServerClient& serverClient
 ) : _temperatureSensor(temperatureSensor), _pressureSensor(pressureSensor),
     _button(button), _session(session), _temperaturePolicy(temperaturePolicy),
-    _transport(transport), _fermentationStarter(fermentationStarter), _status(status),
-    _serverClient(serverClient)
+    _transport(transport), _status(status), _serverClient(serverClient)
 {
 }
 
@@ -105,9 +103,6 @@ void SensorSessionCoordinator::updateSessionInput()
         const MeasurementState current = _session.getState();
         if (current == MeasurementState::RUNNING) {
             _pressureSensor.onSessionRunning();
-            if (_lastState == MeasurementState::IDLE) {
-                _fermentationStarter.requestStart();
-            }
         }
         else if (current == MeasurementState::PAUSED) _pressureSensor.onSessionPaused();
         if (current != _lastState) {
@@ -136,8 +131,8 @@ void SensorSessionCoordinator::handleMeasurementAssignments()
             _serverClient.finishedBeerId() == beerId;
 
         if (!unchangedIdleAssignment) {
-            // Also reset an IDLE assignment change: buffered measurements and
-            // detector/starter history must never cross the beer boundary.
+            // Also reset an IDLE assignment change: detector and buffered
+            // measurement history must never cross the beer boundary.
             resetSessionRuntime(true);
             if (!_serverClient.assignFinishedBeerContext(beerId)) continue;
         }
@@ -153,7 +148,6 @@ void SensorSessionCoordinator::resetSessionRuntime(bool clearAssignment)
     _transport.resetRuntimeState();
     _temperaturePolicy.resetRuntimeState();
     _pressureSensor.onSessionStopped();
-    _fermentationStarter.resetSession();
     if (clearAssignment) _serverClient.clearFinishedBeerContext();
     _lastState = MeasurementState::IDLE;
     _status.showMeasurementState(MeasurementState::IDLE);

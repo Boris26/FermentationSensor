@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CLIENT = (ROOT / "src/network/ServerClient.cpp").read_text()
 CLIENT_HEADER = (ROOT / "include/network/ServerClient.h").read_text()
 COORDINATOR = (ROOT / "src/app/SensorSessionCoordinator.cpp").read_text()
-STARTER = (ROOT / "src/network/FermentationStarter.cpp").read_text()
 
 
 class MeasurementAssignmentTests(unittest.TestCase):
@@ -17,10 +16,9 @@ class MeasurementAssignmentTests(unittest.TestCase):
         self.assertIn('"ASSIGN_MEASUREMENT_ACK\\\",\\\"beerId\\\":\\\""', CLIENT)
         self.assertIn("sendAssignMeasurementAck(beerId)", COORDINATOR)
 
-    def test_validation_is_shared_with_fermentation_start_path(self):
+    def test_assignment_id_validation_is_retained(self):
         self.assertIn("isSafeFinishedBeerId", CLIENT_HEADER)
         self.assertIn("!isSafeFinishedBeerId(beerId)", CLIENT)
-        self.assertIn("ServerClient::isSafeFinishedBeerId(beerId)", STARTER)
         self.assertIn("if (value.isEmpty()) return false;", CLIENT)
         self.assertIn("c == '-' || c == '_'", CLIENT)
 
@@ -45,7 +43,6 @@ class MeasurementAssignmentTests(unittest.TestCase):
             "_transport.resetRuntimeState();",
             "_temperaturePolicy.resetRuntimeState();",
             "_pressureSensor.onSessionStopped();",
-            "_fermentationStarter.resetSession();",
             "_serverClient.clearFinishedBeerContext();",
         ):
             self.assertIn(operation, reset)

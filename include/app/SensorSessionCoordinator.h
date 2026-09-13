@@ -4,7 +4,6 @@
 
 class MeasurementButton;
 class MeasurementTransport;
-class FermentationStarter;
 class PressureSensor;
 class StatusController;
 class ServerClient;
@@ -21,7 +20,6 @@ public:
         MeasurementSession& session,
         TemperatureTransmissionPolicy& temperaturePolicy,
         MeasurementTransport& transport,
-        FermentationStarter& fermentationStarter,
         StatusController& status,
         ServerClient& serverClient
     );
@@ -46,7 +44,6 @@ private:
     MeasurementSession& _session;
     TemperatureTransmissionPolicy& _temperaturePolicy;
     MeasurementTransport& _transport;
-    FermentationStarter& _fermentationStarter;
     StatusController& _status;
     ServerClient& _serverClient;
     MeasurementState _lastState = MeasurementState::IDLE;
