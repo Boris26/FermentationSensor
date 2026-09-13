@@ -17,6 +17,6 @@ struct GatewayEndpoint
         }
 
         IPAddress parsed;
-        return parsed.fromString(address.c_str());
+        return parsed.fromString(address.c_str()) && parsed != IPAddress();
     }
 };
