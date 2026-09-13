@@ -16,6 +16,14 @@ void FermentationStarter::requestStart()
     _nextAttemptMs = millis();
 }
 
+void FermentationStarter::resetSession()
+{
+    _requested = false;
+    _completed = false;
+    _nextAttemptMs = 0;
+    _retryIntervalMs = 5000;
+}
+
 void FermentationStarter::update()
 {
     if (!_requested || _completed || !_serverClient.isRegistered()) return;

@@ -133,6 +133,15 @@ class MeasurementOutboxTests(unittest.TestCase):
                 assert(outbox.size() == sizeBeforeFailure);
                 assert(outbox.front().sequence == frontBeforeFailure);
 
+                // STOP discards runtime data without rewinding the allocator.
+                sequences.fail = false;
+                outbox.resetRuntimeState();
+                assert(outbox.empty());
+                assert(outbox.size() == 0);
+                assert(outbox.enqueueTemperature(22, 20, false, 0, 4));
+                assert(outbox.front().sequence == sequences.nextValue - 1);
+                assert(outbox.front().sequence > frontBeforeFailure);
+
                 // Unsigned subtraction naturally handles millis() rollover.
                 OutboxEntry wrapped = {};
                 wrapped.capturedAtMs = UINT32_MAX - 999;

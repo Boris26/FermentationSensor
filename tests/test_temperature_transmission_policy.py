@@ -57,6 +57,11 @@ class TemperatureTransmissionPolicyTests(unittest.TestCase):
                 assert(!policy.isCurrentMeasurementRequested());
                 assert(!policy.shouldSend(22.1f, 19.5f));
 
+                // A stopped session cannot suppress the next session's first value.
+                policy.resetRuntimeState();
+                assert(!policy.isCurrentMeasurementRequested());
+                assert(policy.shouldSend(22.1f, 19.5f));
+
                 return 0;
             }
             """

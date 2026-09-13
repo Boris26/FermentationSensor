@@ -15,6 +15,7 @@ public:
 
     void requestStart();
     void update();
+    void resetSession();
 
 private:
     bool postStart(const String& beerId);

@@ -7,6 +7,7 @@ class MeasurementTransport;
 class FermentationStarter;
 class PressureSensor;
 class StatusController;
+class ServerClient;
 class TemperatureSensor;
 class TemperatureTransmissionPolicy;
 
@@ -21,7 +22,8 @@ public:
         TemperatureTransmissionPolicy& temperaturePolicy,
         MeasurementTransport& transport,
         FermentationStarter& fermentationStarter,
-        StatusController& status
+        StatusController& status,
+        ServerClient& serverClient
     );
 
     void begin();
@@ -34,6 +36,7 @@ private:
     void updateSensorInitialization();
     void initializeSessionIfSensorsReady();
     void queueTemperatureIfEligible(bool sequenceReady, bool newMeasurement);
+    void handleStopMeasurementRequests();
 
     TemperatureSensor& _temperatureSensor;
     PressureSensor& _pressureSensor;
@@ -43,6 +46,7 @@ private:
     MeasurementTransport& _transport;
     FermentationStarter& _fermentationStarter;
     StatusController& _status;
+    ServerClient& _serverClient;
     MeasurementState _lastState = MeasurementState::IDLE;
     bool _sensorsReady = false;
     bool _sessionInitialized = false;

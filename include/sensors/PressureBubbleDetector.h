@@ -29,6 +29,7 @@ class PressureBubbleDetector
 public:
     explicit PressureBubbleDetector(const PressureBubbleConfig& config);
     void reconfigure(const PressureBubbleConfig& config);
+    void resetSession();
 
     void onRunning(unsigned long nowMs);
     void onPaused(unsigned long nowMs);

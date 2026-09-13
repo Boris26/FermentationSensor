@@ -13,6 +13,7 @@ public:
     void begin();
 
     void handleButtonPress();
+    void stop();
 
     MeasurementState getState() const;
 

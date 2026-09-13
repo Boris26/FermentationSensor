@@ -11,10 +11,26 @@ PressureBubbleDetector::PressureBubbleDetector(const PressureBubbleConfig& confi
 void PressureBubbleDetector::reconfigure(const PressureBubbleConfig& config)
 {
     _config = config;
+    resetSession();
+}
+
+void PressureBubbleDetector::resetSession()
+{
     _mode = Mode::UNCALIBRATED;
     _detectionState = DetectionState::IDLE;
     _paused = true;
     _totalBubbleCount = 0;
+    _calibrationStartedAtMs = 0;
+    _pausedAtMs = 0;
+    _baselinePa = 0.0f;
+    _calibratedBaselinePa = 0.0f;
+    _noisePa = 0.0f;
+    _triggerDeltaPa = 0.0f;
+    _releaseDeltaPa = 0.0f;
+    _bubbleStartedAtMs = 0;
+    _refractoryStartedAtMs = 0;
+    _peakDeltaPa = 0.0f;
+    _lastBubbleEvent = BubbleEvent();
     clearCalibrationData();
 }
 

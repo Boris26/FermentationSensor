@@ -40,7 +40,7 @@ FermentationSensorApplication::FermentationSensorApplication() :
     _sensorSession(
         _temperatureSensor, _pressureSensor, _measurementButton,
         _measurementSession, _temperaturePolicy, _measurementTransport,
-        _fermentationStarter, _statusController
+        _fermentationStarter, _statusController, _serverClient
     ),
     _maintenanceConsole(_storageMaintenance)
 {
