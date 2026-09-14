@@ -49,5 +49,6 @@ private:
     MeasurementState _lastState = MeasurementState::IDLE;
     bool _sensorsReady = false;
     bool _sessionInitialized = false;
+    bool _initialMeasurementPending = false;
     unsigned long _lastSensorCheckMs = 0;
 };
