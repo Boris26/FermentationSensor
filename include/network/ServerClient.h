@@ -8,6 +8,7 @@
 #include "network/GatewayEndpoint.h"
 #include "network/MeasurementOutbox.h"
 
+enum class MeasurementState;
 
 class ServerClient
 {
@@ -38,8 +39,10 @@ public:
     uint8_t failedConnectionCycles() const;
 
     bool sendMeasurement(const OutboxEntry& measurement, uint32_t nowMs);
+    bool sendMeasurementState(MeasurementState state);
 
     bool takeMeasurementAcknowledgement(uint32_t& sequence);
+    bool takeRegistrationEstablished();
     bool takeStopMeasurementRequest();
     bool sendStopMeasurementAck();
     bool takeMeasurementAssignment(String& beerId);
@@ -100,6 +103,7 @@ private:
     bool _connected = false;
 
     bool _registered = false;
+    bool _registrationEstablished = false;
     String _finishedBeerId;
     bool _hasMeasurementAcknowledgement = false;
     uint32_t _measurementAcknowledgementSequence = 0;
