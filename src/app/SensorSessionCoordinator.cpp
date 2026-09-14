@@ -63,15 +63,17 @@ void SensorSessionCoordinator::queueTemperatureIfEligible(
 )
 {
     if (!sequenceReady || !newMeasurement || !_sessionInitialized ||
-        !_sensorsReady || !_session.isRunning() ||
-        !_temperaturePolicy.shouldSend(
+        !_sensorsReady || !_session.isRunning()) return;
+
+    const bool forceInitialMeasurement = _initialMeasurementPending;
+    if (!forceInitialMeasurement && !_temperaturePolicy.shouldSend(
             _temperatureSensor.getBeerTemperature(),
             _temperatureSensor.getAmbientTemperature()
         )) return;
 
     const float beer = _temperatureSensor.getBeerTemperature();
     const float ambient = _temperatureSensor.getAmbientTemperature();
-    const bool equivalentReconnectSnapshot =
+    const bool equivalentReconnectSnapshot = !forceInitialMeasurement &&
         _temperaturePolicy.isCurrentMeasurementRequested() &&
         _transport.lastTemperatureIsEquivalent(beer, ambient);
     if (equivalentReconnectSnapshot || _transport.bufferTemperature(
@@ -79,6 +81,7 @@ void SensorSessionCoordinator::queueTemperatureIfEligible(
         _pressureSensor.getPressurePa(), static_cast<uint32_t>(millis())
     )) {
         _temperaturePolicy.recordQueuedMeasurement(beer, ambient);
+        _initialMeasurementPending = false;
     }
 }
 
@@ -103,6 +106,8 @@ void SensorSessionCoordinator::updateSessionInput()
         const MeasurementState current = _session.getState();
         if (current == MeasurementState::RUNNING) {
             _pressureSensor.onSessionRunning();
+            _temperatureSensor.requestImmediateMeasurement();
+            _initialMeasurementPending = true;
         }
         else if (current == MeasurementState::PAUSED) _pressureSensor.onSessionPaused();
         if (current != _lastState) {
@@ -148,6 +153,8 @@ void SensorSessionCoordinator::resetSessionRuntime(bool clearAssignment)
     _transport.resetRuntimeState();
     _temperaturePolicy.resetRuntimeState();
     _pressureSensor.onSessionStopped();
+    _temperatureSensor.cancelImmediateMeasurementRequest();
+    _initialMeasurementPending = false;
     if (clearAssignment) _serverClient.clearFinishedBeerContext();
     _lastState = MeasurementState::IDLE;
     _status.showMeasurementState(MeasurementState::IDLE);

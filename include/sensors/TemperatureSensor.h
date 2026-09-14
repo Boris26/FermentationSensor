@@ -17,6 +17,8 @@ public:
 
     void begin();
     bool update();
+    void requestImmediateMeasurement();
+    void cancelImmediateMeasurementRequest();
 
     void refresh();
     bool isConversionInProgress() const;
@@ -67,6 +69,7 @@ private:
     bool _measurementAttempted = false;
     bool _lastMeasurementValid = false;
     bool _conversionInProgress = false;
+    bool _immediateMeasurementRequested = false;
 
     unsigned long _lastMeasurementMs = 0;
     unsigned long _conversionStartedMs = 0;

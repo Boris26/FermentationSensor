@@ -197,6 +197,7 @@ bool TemperatureSensor::update()
 
     if (!_conversionInProgress) {
         if (
+            !_immediateMeasurementRequested &&
             now - _lastMeasurementMs <
             TEMPERATURE_INTERVAL_MS
         ) {
@@ -207,6 +208,7 @@ bool TemperatureSensor::update()
         _conversionStartedMs = now;
         _conversionTimeMs = getConversionTimeMs();
         _conversionInProgress = true;
+        _immediateMeasurementRequested = false;
 
         _sensors.requestTemperatures();
 
@@ -292,6 +294,20 @@ bool TemperatureSensor::update()
         beerMeasurementReceived;
 
     return _lastMeasurementValid;
+}
+
+void TemperatureSensor::requestImmediateMeasurement()
+{
+    // A conversion which started before the session transition must not
+    // provide its cached result as the session's initial measurement.
+    _conversionInProgress = false;
+    _immediateMeasurementRequested = true;
+}
+
+void TemperatureSensor::cancelImmediateMeasurementRequest()
+{
+    _immediateMeasurementRequested = false;
+    _conversionInProgress = false;
 }
 
 
