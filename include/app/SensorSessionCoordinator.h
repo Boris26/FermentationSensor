@@ -36,6 +36,8 @@ private:
     void queueTemperatureIfEligible(bool sequenceReady, bool newMeasurement);
     void handleStopMeasurementRequests();
     void handleMeasurementAssignments();
+    void handleRegistrationEstablished();
+    bool publishMeasurementState(MeasurementState state, bool force = false);
     void resetSessionRuntime(bool clearAssignment);
 
     TemperatureSensor& _temperatureSensor;
@@ -47,6 +49,8 @@ private:
     StatusController& _status;
     ServerClient& _serverClient;
     MeasurementState _lastState = MeasurementState::IDLE;
+    MeasurementState _lastPublishedState = MeasurementState::IDLE;
+    bool _hasPublishedState = false;
     bool _sensorsReady = false;
     bool _sessionInitialized = false;
     bool _initialMeasurementPending = false;

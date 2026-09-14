@@ -99,6 +99,7 @@ void SensorSessionCoordinator::updateInput()
 
 void SensorSessionCoordinator::updateSessionInput()
 {
+    handleRegistrationEstablished();
     handleStopMeasurementRequests();
     handleMeasurementAssignments();
     if (_sessionInitialized && _button.wasPressed()) {
@@ -112,10 +113,44 @@ void SensorSessionCoordinator::updateSessionInput()
         else if (current == MeasurementState::PAUSED) _pressureSensor.onSessionPaused();
         if (current != _lastState) {
             _status.showMeasurementState(current);
+            publishMeasurementState(current);
             _lastState = current;
         }
     }
     if (_sessionInitialized && _session.isRunning()) _pressureSensor.update();
+}
+
+void SensorSessionCoordinator::handleRegistrationEstablished()
+{
+    if (!_serverClient.takeRegistrationEstablished()) return;
+
+    const MeasurementState current = _session.getState();
+    if (publishMeasurementState(current, true)) {
+        Serial.print("Measurement runtime state resynchronized after registration: ");
+        switch (current) {
+            case MeasurementState::IDLE: Serial.println("IDLE"); break;
+            case MeasurementState::RUNNING: Serial.println("RUNNING"); break;
+            case MeasurementState::PAUSED: Serial.println("PAUSED"); break;
+        }
+    }
+}
+
+bool SensorSessionCoordinator::publishMeasurementState(
+    MeasurementState state, bool force
+)
+{
+    if (!force && _hasPublishedState && state == _lastPublishedState) return false;
+    if (!_serverClient.sendMeasurementState(state)) return false;
+
+    _lastPublishedState = state;
+    _hasPublishedState = true;
+    Serial.print("Measurement runtime state sent: ");
+    switch (state) {
+        case MeasurementState::IDLE: Serial.println("IDLE"); break;
+        case MeasurementState::RUNNING: Serial.println("RUNNING"); break;
+        case MeasurementState::PAUSED: Serial.println("PAUSED"); break;
+    }
+    return true;
 }
 
 void SensorSessionCoordinator::handleStopMeasurementRequests()
@@ -149,6 +184,7 @@ void SensorSessionCoordinator::handleMeasurementAssignments()
 
 void SensorSessionCoordinator::resetSessionRuntime(bool clearAssignment)
 {
+    const MeasurementState previousState = _session.getState();
     _session.stop();
     _transport.resetRuntimeState();
     _temperaturePolicy.resetRuntimeState();
@@ -158,4 +194,7 @@ void SensorSessionCoordinator::resetSessionRuntime(bool clearAssignment)
     if (clearAssignment) _serverClient.clearFinishedBeerContext();
     _lastState = MeasurementState::IDLE;
     _status.showMeasurementState(MeasurementState::IDLE);
+    if (previousState != MeasurementState::IDLE) {
+        publishMeasurementState(MeasurementState::IDLE);
+    }
 }

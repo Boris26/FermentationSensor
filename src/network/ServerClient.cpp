@@ -1,4 +1,5 @@
 #include "network/ServerClient.h"
+#include "session/MeasurementSession.h"
 
 
 ServerClient::ServerClient(
@@ -35,6 +36,7 @@ void ServerClient::begin(
     _connected = false;
 
     _registered = false;
+    _registrationEstablished = false;
 
     _failedConnectionCycles = 0;
 
@@ -129,6 +131,13 @@ bool ServerClient::isConnected() const
 bool ServerClient::isRegistered() const
 {
     return _registered;
+}
+
+bool ServerClient::takeRegistrationEstablished()
+{
+    if (!_registrationEstablished) return false;
+    _registrationEstablished = false;
+    return true;
 }
 
 const String& ServerClient::finishedBeerId() const
@@ -359,6 +368,7 @@ void ServerClient::disconnect()
     _connected = false;
 
     _registered = false;
+    _registrationEstablished = false;
 
 
     if (_webSocketClient != nullptr) {
@@ -605,6 +615,7 @@ void ServerClient::handleMessage(
                 assignFinishedBeerContext(finishedBeerId);
             }
             _registered = true;
+            _registrationEstablished = true;
 
             _failedConnectionCycles = 0;
 
@@ -832,6 +843,35 @@ bool ServerClient::sendMeasurement(
     }
     message += "}";
     return sendTextMessage(message, "measurement");
+}
+
+bool ServerClient::sendMeasurementState(MeasurementState state)
+{
+    if (!_connected || !_registered || _webSocketClient == nullptr) {
+        return false;
+    }
+
+    const char* stateName = nullptr;
+    switch (state) {
+        case MeasurementState::IDLE:
+            stateName = "IDLE";
+            break;
+        case MeasurementState::RUNNING:
+            stateName = "RUNNING";
+            break;
+        case MeasurementState::PAUSED:
+            stateName = "PAUSED";
+            break;
+    }
+
+    String message;
+    message.reserve(120);
+    message += "{\"type\":\"MEASUREMENT_STATE_CHANGED\",\"deviceId\":\"";
+    message += _deviceIdentity.getDeviceId();
+    message += "\",\"state\":\"";
+    message += stateName;
+    message += "\"}";
+    return sendTextMessage(message, "measurement runtime state");
 }
 
 bool ServerClient::takeMeasurementAcknowledgement(uint32_t& sequence)
