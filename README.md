@@ -327,7 +327,9 @@ Ist der Ringbuffer voll, gilt **DROP OLDEST**: Der älteste Eintrag wird verworf
 
 ### Druckkalibrierung und technische Blubb-Erkennung
 
-Der DFRobot LWLP5000 / SEN0343 misst den Differenzdruck zwischen Gärbehälter und Umgebung in Pascal. Während einer laufenden `RUNNING`-Session liest die Firmware den Sensor nicht blockierend alle 100 ms (etwa 10 Messwerte pro Sekunde) und gibt bei aktiviertem `PRESSURE_DIAGNOSTICS_ENABLED` eine maschinenlesbare Zeile aus:
+Der DFRobot LWLP5000 / SEN0343 misst den Differenzdruck zwischen Gärbehälter und Umgebung in Pascal. Während einer laufenden `RUNNING`-Session startet die Firmware intervallgesteuert alle 100 ms eine Messung (etwa 10 Messwerte pro Sekunde) und gibt bei aktiviertem `PRESSURE_DIAGNOSTICS_ENABLED` eine maschinenlesbare Zeile aus:
+
+Ein eigener, kompakter Treiber sendet dafür den Command-Mode-Befehl `0xAA 0x00 0x80`, wartet einmalig 30 ms auf die Wandlung und liest sieben Bytes. Der 14-Bit-Druckrohwert wird mit `pressurePa = raw / 16384 * 1000 - 500` auf den SEN0343-Messbereich von −500 bis +500 Pa abgebildet. `begin()` prüft ausschließlich die I²C-Erreichbarkeit und führt weder Tare noch Driftkorrektur oder Nullpunktbestimmung durch. Die nachfolgend beschriebene Detektionsbaseline bleibt davon getrennt.
 
 ```text
 PRESSURE,<millis>,<pressurePa>
@@ -370,6 +372,10 @@ BUBBLE_WINDOW,<startMs>,<durationMs>,<bubbleCount>,<averagePressureDeltaPa>
 - **UI:** übernimmt später die Anzeige.
 
 Der Sensor erzeugt insbesondere keine Aussagen wie „Gärung aktiv“, „Gärung stark“, „Gärung schwach“, „Gärung fast beendet“, „Gärung beendet“ oder „Plato stabil“. Solche Hinweise dürfen später ausschließlich im Backend abgeleitet werden. Fachliche Auswertung und Flash-Persistenz der Outbox bleiben bewusst außerhalb dieser Firmware-Erweiterung.
+
+### Manueller Druck-Referenztest
+
+Der unkalibrierte Messpfad soll als nächster Hardwaretest mit einem reproduzierbaren Wasser-Manometer geprüft werden. Näherungsweise entsprechen 5 mm H₂O 49,0 Pa, 10 mm 98,1 Pa, 20 mm 196,1 Pa, 30 mm 294,2 Pa und 40 mm 392,3 Pa. Die Druckstufen sollen in beide Richtungen angefahren, gehalten und über die serielle `PRESSURE`-Diagnose verglichen werden. Dabei muss durch eine geeignete Luftstrecke beziehungsweise Flüssigkeitssperre unbedingt verhindert werden, dass Wasser in einen Sensoranschluss gelangt. Dieser manuelle Test und eine spätere Offsetkalibrierung sind nicht Bestandteil der Firmwareimplementierung.
 
 ## LEDs
 
