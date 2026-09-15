@@ -2,6 +2,7 @@
 
 #include "sensors/PressureBubbleDetector.h"
 #include "sensors/BubbleActivityAggregator.h"
+#include "sensors/Lwlp5000Driver.h"
 #include "config/SensorConfig.h"
 
 class PressureSensor
@@ -25,6 +26,7 @@ public:
 private:
     bool _available = false;
     float _pressurePa = 0.0f;
+    Lwlp5000Driver _driver;
     PressureBubbleDetector _bubbleDetector;
     BubbleActivityAggregator _bubbleActivityAggregator;
     uint32_t _diagnosedWindowRevision = 0;

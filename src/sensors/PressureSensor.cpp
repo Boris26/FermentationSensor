@@ -1,12 +1,10 @@
 #include "sensors/PressureSensor.h"
 
 #include <Arduino.h>
-#include <DFRobot_LWLP.h>
+#include <Wire.h>
 
 namespace
 {
-    DFRobot_LWLP lwlp;
-
     PressureBubbleConfig defaultPressureConfig()
     {
         const SensorConfig config = SensorConfig::defaults();
@@ -17,7 +15,7 @@ namespace
 }
 
 PressureSensor::PressureSensor()
-    : _bubbleDetector(defaultPressureConfig()),
+    : _driver(Wire), _bubbleDetector(defaultPressureConfig()),
     _bubbleActivityAggregator(SensorConfig::defaults().bubbleActivityWindowMs)
 {
 }
@@ -40,18 +38,13 @@ void PressureSensor::begin()
         "PressureSensor: initializing..."
     );
 
-    const int result =
-        lwlp.begin();
+    const bool initialized = _driver.begin();
 
-    if (result != 0)
+    if (!initialized)
     {
         _available = false;
 
-        Serial.print(
-            "PressureSensor: initialization failed, error="
-        );
-
-        Serial.println(result);
+        Serial.println("PressureSensor: initialization failed.");
 
         return;
     }
@@ -83,11 +76,10 @@ void PressureSensor::update()
 
     _lastReadMs = now;
 
-    const DFRobot_LWLP::sLwlp_t data =
-        lwlp.getData();
+    const Lwlp5000Sample sample = _driver.read();
+    if (!sample.valid) return;
 
-    _pressurePa =
-        data.presure;
+    _pressurePa = sample.pressurePa;
 
     const bool wasCalibrated =
         _bubbleDetector.isCalibrated();
