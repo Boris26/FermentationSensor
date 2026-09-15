@@ -13,7 +13,7 @@ struct SensorConfig {
     static constexpr float DEFAULT_RELEASE_FACTOR = 0.40f;
     static constexpr uint32_t DEFAULT_MIN_DURATION_MS = 100;
     static constexpr uint32_t DEFAULT_MAX_DURATION_MS = 3000;
-    static constexpr uint32_t DEFAULT_REFRACTORY_MS = 500;
+    static constexpr uint32_t DEFAULT_REFRACTORY_MS = 100;
     static constexpr float DEFAULT_BASELINE_TRACKING_ALPHA = 0.001f;
     static constexpr uint32_t DEFAULT_ACTIVITY_WINDOW_MS = 60000;
     static constexpr float DEFAULT_TEMPERATURE_SEND_DELTA_C = 1.0f;
