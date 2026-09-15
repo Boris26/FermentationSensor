@@ -168,7 +168,7 @@ class PressureBubbleDetectorTests(unittest.TestCase):
             "DEFAULT_NOISE_FACTOR = 5.0f",
             "DEFAULT_RELEASE_FACTOR = 0.40f",
             "DEFAULT_MIN_DURATION_MS = 100",
-            "DEFAULT_MAX_DURATION_MS = 3000",
+            "DEFAULT_MAX_DURATION_MS = 1000",
             "DEFAULT_REFRACTORY_MS = 500",
             "DEFAULT_BASELINE_TRACKING_ALPHA = 0.001f",
         ):
