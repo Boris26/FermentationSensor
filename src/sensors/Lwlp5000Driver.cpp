@@ -27,31 +27,42 @@ bool Lwlp5000Driver::begin()
 Lwlp5000Sample Lwlp5000Driver::read()
 {
     Lwlp5000Sample sample;
-    if (!_initialized || !sendMeasurementCommand()) return sample;
+    if (!_initialized) {
+        sample.error = Lwlp5000ReadError::NOT_INITIALIZED;
+        return sample;
+    }
+    if (!sendMeasurementCommand()) {
+        sample.error = Lwlp5000ReadError::COMMAND_FAILED;
+        return sample;
+    }
 
-    // The command-mode conversion needs 30 ms. There are no retries or extra
-    // filter samples, so a read still fits comfortably in the 100 ms cadence.
+    // The command-mode conversion needs at least 30 ms. There are no retries
+    // or extra filter samples, so a read still fits in the 100 ms cadence.
     delay(CONVERSION_TIME_MS);
 
     const uint8_t received = _wire.requestFrom(I2C_ADDRESS, RESPONSE_SIZE);
     if (received != RESPONSE_SIZE) {
         while (_wire.available()) (void) _wire.read();
+        sample.error = Lwlp5000ReadError::SHORT_READ;
         return sample;
     }
 
     uint8_t response[RESPONSE_SIZE];
     for (uint8_t index = 0; index < RESPONSE_SIZE; ++index) {
-        if (!_wire.available()) return sample;
+        if (!_wire.available()) {
+            sample.error = Lwlp5000ReadError::INCOMPLETE_READ;
+            return sample;
+        }
         response[index] = static_cast<uint8_t>(_wire.read());
     }
 
+    // The datasheet documents the first byte as a status byte but does not
+    // define bit meanings that would justify rejecting otherwise complete
+    // samples. Preserve it for diagnostics without applying guessed masks.
     sample.status = response[0];
-    if ((sample.status & STATUS_INVALID_MASK) != 0) return sample;
 
     const uint16_t pressureRaw = decodePressureRaw(response[1], response[2]);
-    const uint16_t temperatureRaw = decodeTemperatureRaw(
-        response[4], response[5], response[6]
-    );
+    const uint16_t temperatureRaw = decodeTemperatureRaw(response[4], response[5]);
     sample.pressurePa = pressureRawToPa(pressureRaw);
     sample.temperatureC = temperatureRawToC(temperatureRaw);
     sample.valid = true;
@@ -60,7 +71,7 @@ Lwlp5000Sample Lwlp5000Driver::read()
 
 uint16_t Lwlp5000Driver::decodePressureRaw(uint8_t high, uint8_t middle)
 {
-    // The pressure occupies the upper 14 bits of the first two pressure bytes.
+    // Datasheet: pressure occupies bits [23:10] of the 24-bit pressure field.
     return static_cast<uint16_t>(
         (static_cast<uint16_t>(high) << 8 | middle) >> 2
     );
@@ -72,17 +83,17 @@ float Lwlp5000Driver::pressureRawToPa(uint16_t pressureRaw)
         PRESSURE_SPAN_PA + PRESSURE_MIN_PA;
 }
 
-uint16_t Lwlp5000Driver::decodeTemperatureRaw(
-    uint8_t high, uint8_t middle, uint8_t low
-)
+uint16_t Lwlp5000Driver::decodeTemperatureRaw(uint8_t high, uint8_t middle)
 {
-    const uint32_t raw = (static_cast<uint32_t>(high) << 16) |
-        (static_cast<uint32_t>(middle) << 8) | low;
-    return static_cast<uint16_t>(raw >> 11);
+    // Datasheet: temperature occupies bits [23:08]; the last byte is reserved.
+    return static_cast<uint16_t>(
+        static_cast<uint16_t>(high) << 8 | middle
+    );
 }
 
 float Lwlp5000Driver::temperatureRawToC(uint16_t temperatureRaw)
 {
+    // Datasheet: T = (125 / 2^16) * T1 - 40, yielding -40 ... +85 C.
     return (static_cast<float>(temperatureRaw) / TEMPERATURE_RAW_RANGE) *
         TEMPERATURE_SPAN_C + TEMPERATURE_MIN_C;
 }

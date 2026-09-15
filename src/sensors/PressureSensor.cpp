@@ -12,6 +12,18 @@ namespace
             config.releaseFactor, config.minDurationMs, config.maxDurationMs,
             config.refractoryMs, config.baselineTrackingAlpha};
     }
+
+    const char* pressureReadErrorName(Lwlp5000ReadError error)
+    {
+        switch (error) {
+            case Lwlp5000ReadError::NONE: return "NONE";
+            case Lwlp5000ReadError::NOT_INITIALIZED: return "NOT_INITIALIZED";
+            case Lwlp5000ReadError::COMMAND_FAILED: return "COMMAND_FAILED";
+            case Lwlp5000ReadError::SHORT_READ: return "SHORT_READ";
+            case Lwlp5000ReadError::INCOMPLETE_READ: return "INCOMPLETE_READ";
+        }
+        return "UNKNOWN";
+    }
 }
 
 PressureSensor::PressureSensor()
@@ -77,7 +89,18 @@ void PressureSensor::update()
     _lastReadMs = now;
 
     const Lwlp5000Sample sample = _driver.read();
-    if (!sample.valid) return;
+    if (!sample.valid) {
+        if (
+            _config.rawPressureDiagnosticsEnabled &&
+            sample.error != Lwlp5000ReadError::NONE
+        ) {
+            Serial.print("PRESSURE_READ_INVALID,");
+            Serial.print(now);
+            Serial.print(',');
+            Serial.println(pressureReadErrorName(sample.error));
+        }
+        return;
+    }
 
     _pressurePa = sample.pressurePa;
 

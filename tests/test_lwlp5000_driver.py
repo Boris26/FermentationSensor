@@ -73,16 +73,18 @@ class Lwlp5000DriverTests(unittest.TestCase):
                 return std::fabs(actual - expected) <= tolerance;
             }
 
-            std::vector<uint8_t> responseFor(uint16_t pressureRaw, uint8_t status = 0)
+            std::vector<uint8_t> responseFor(
+                uint16_t pressureRaw,
+                uint8_t status = 0,
+                uint16_t temperatureRaw = 32768
+            )
             {
                 const uint16_t encodedPressure = pressureRaw << 2;
-                const uint32_t encodedTemperature = 4096UL << 11;
                 return {status,
                     static_cast<uint8_t>(encodedPressure >> 8),
                     static_cast<uint8_t>(encodedPressure), 0,
-                    static_cast<uint8_t>(encodedTemperature >> 16),
-                    static_cast<uint8_t>(encodedTemperature >> 8),
-                    static_cast<uint8_t>(encodedTemperature)};
+                    static_cast<uint8_t>(temperatureRaw >> 8),
+                    static_cast<uint8_t>(temperatureRaw), 0};
             }
 
             int main()
@@ -106,23 +108,38 @@ class Lwlp5000DriverTests(unittest.TestCase):
                 assert(wire.tx.empty());
 
                 Lwlp5000Sample first = driver.read();
-                assert(first.valid && closeTo(first.pressurePa, 35.0f));
-                assert(closeTo(first.temperatureC, 2.5f));
+                assert(first.valid && first.error == Lwlp5000ReadError::NONE);
+                assert(closeTo(first.pressurePa, 35.0f));
+                assert(closeTo(first.temperatureC, 22.5f));
                 assert((wire.tx == std::vector<uint8_t>{0xAA, 0x00, 0x80}));
                 Lwlp5000Sample second = driver.read();
                 assert(second.valid && closeTo(second.pressurePa, 35.0f));
 
+                // The datasheet exposes a status byte but does not define these
+                // bits as reasons to reject a complete sample. Preserve it only.
                 wire.response = responseFor(8192, 0x20);
-                Lwlp5000Sample busy = driver.read();
-                assert(!busy.valid && busy.status == 0x20);
+                Lwlp5000Sample statusSample = driver.read();
+                assert(statusSample.valid && statusSample.status == 0x20);
+                assert(statusSample.error == Lwlp5000ReadError::NONE);
+
                 wire.shortRead = true;
-                assert(!driver.read().valid);
+                Lwlp5000Sample shortRead = driver.read();
+                assert(!shortRead.valid);
+                assert(shortRead.error == Lwlp5000ReadError::SHORT_READ);
+                wire.shortRead = false;
+
+                wire.failWrite = true;
+                Lwlp5000Sample commandFailure = driver.read();
+                assert(!commandFailure.valid);
+                assert(commandFailure.error == Lwlp5000ReadError::COMMAND_FAILED);
 
                 TwoWire missingWire;
                 missingWire.failTransmission = true;
                 Lwlp5000Driver missing(missingWire);
                 assert(!missing.begin());
-                assert(!missing.read().valid);
+                Lwlp5000Sample notInitialized = missing.read();
+                assert(!notInitialized.valid);
+                assert(notInitialized.error == Lwlp5000ReadError::NOT_INITIALIZED);
                 return 0;
             }
         """))
@@ -145,6 +162,11 @@ class Lwlp5000DriverTests(unittest.TestCase):
         self.assertIn("PRESSURE_MIN_PA = -500.0f", HEADER)
         self.assertIn("PRESSURE_MAX_PA = 500.0f", HEADER)
         self.assertNotIn("600", HEADER + SOURCE)
+
+    def test_temperature_conversion_matches_datasheet(self):
+        self.assertIn("TEMPERATURE_SPAN_C = 125.0f", HEADER)
+        self.assertIn("TEMPERATURE_RAW_RANGE = 65536.0f", HEADER)
+        self.assertNotIn("STATUS_INVALID_MASK", HEADER + SOURCE)
 
     def test_external_dfrobot_dependency_is_removed(self):
         self.assertNotIn("DFRobot_LWLP", PLATFORMIO + HEADER + SOURCE)
