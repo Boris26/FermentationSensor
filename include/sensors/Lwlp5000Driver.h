@@ -1,8 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-
-class TwoWire;
+#include <Wire.h>
 
 struct Lwlp5000Sample
 {
