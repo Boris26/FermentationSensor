@@ -20,6 +20,7 @@ public:
     void update();
 
 private:
+    enum class RecoveryState { WIFI_RECONNECT, SOCKET_RECONNECT, DISCOVERY, CONNECTED };
     void startDiscovery();
 
     NetworkManager& _networkManager;
@@ -33,4 +34,5 @@ private:
     bool _discoveryAttemptActive = false;
     bool _serverWasRegistered = false;
     unsigned long _nextDiscoveryAttemptMs = 0;
+    RecoveryState _recoveryState = RecoveryState::WIFI_RECONNECT;
 };

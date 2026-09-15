@@ -11,6 +11,7 @@ public:
     void update();
 
     bool isConnected() const;
+    void requestReconnect(const char* reason);
 
 private:
     void connect();
@@ -19,4 +20,6 @@ private:
 
     unsigned long _lastConnectionAttempt = 0;
     bool _connectionStarted = false;
+    bool _restartPending = false;
+    unsigned long _restartRequestedMs = 0;
 };

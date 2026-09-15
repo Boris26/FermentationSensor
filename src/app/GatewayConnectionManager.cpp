@@ -22,6 +22,7 @@ GatewayConnectionManager::GatewayConnectionManager(
 
 void GatewayConnectionManager::startDiscovery()
 {
+    _recoveryState = RecoveryState::DISCOVERY;
     _discovery.start();
     _discoveryAttemptActive = _discovery.isRunning();
     if (!_discoveryAttemptActive) {
@@ -43,6 +44,7 @@ void GatewayConnectionManager::update()
         }
         _wifiWasConnected = false;
         _serverWasRegistered = false;
+        _recoveryState = RecoveryState::WIFI_RECONNECT;
         return;
     }
 
@@ -54,6 +56,7 @@ void GatewayConnectionManager::update()
             _serverClient.begin(cached);
             _endpointActive = true;
             _cachedEndpointPending = true;
+            _recoveryState = RecoveryState::SOCKET_RECONNECT;
         } else {
             startDiscovery();
         }
@@ -64,19 +67,29 @@ void GatewayConnectionManager::update()
         const bool registered = _serverClient.isRegistered();
         if (registered && !_serverWasRegistered) {
             _temperaturePolicy.requestCurrentMeasurement();
+            _recoveryState = RecoveryState::CONNECTED;
         }
         _serverWasRegistered = registered;
         if (registered) _cachedEndpointPending = false;
 
-        const uint8_t failureLimit = _cachedEndpointPending
-            ? 1 : GATEWAY_REDISCOVERY_FAILURE_THRESHOLD;
-        if (_serverClient.failedConnectionCycles() >= failureLimit) {
+        const uint8_t failures = _serverClient.failedConnectionCycles();
+        if (_cachedEndpointPending && failures >= 1) {
             Serial.println("Gateway: endpoint failed; starting rediscovery.");
             _serverClient.stop();
             _serverWasRegistered = false;
             _endpointActive = false;
             _cachedEndpointPending = false;
             startDiscovery();
+        } else if (failures >= WIFI_RECOVERY_FAILURE_THRESHOLD) {
+            Serial.println("Gateway: repeated TCP failures; escalating to WiFi reset.");
+            _serverClient.stop();
+            _endpointActive = false;
+            _wifiWasConnected = false;
+            _networkManager.requestReconnect("backend unreachable after socket resets");
+            _recoveryState = RecoveryState::WIFI_RECONNECT;
+            return;
+        } else if (failures > 0) {
+            _recoveryState = RecoveryState::SOCKET_RECONNECT;
         }
     }
 
@@ -87,6 +100,7 @@ void GatewayConnectionManager::update()
         _serverClient.begin(discovered);
         _endpointActive = true;
         _cachedEndpointPending = false;
+        _recoveryState = RecoveryState::SOCKET_RECONNECT;
         _discoveryAttemptActive = false;
         return;
     }

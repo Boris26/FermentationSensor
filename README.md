@@ -1,5 +1,28 @@
 # FermentationSensor
 
+## Network recovery
+
+Network maintenance is cooperative and runs on every application-loop iteration;
+sensor sampling and button handling continue while recovery timers expire. WiFi and
+the BeerDataStore WebSocket are treated as separate layers:
+
+1. A lost WebSocket is retried with a bounded `1 s, 2 s, 5 s, 10 s, 30 s` backoff.
+2. After every three failed connection cycles the WebSocket object and its backing
+   TCP client are stopped and recreated, preventing stale client state from being
+   reused indefinitely.
+3. After nine failures for an endpoint that was previously registered, recovery is
+   escalated to a controlled WiFi disconnect/reinitialization. The cached gateway is
+   then retried after WiFi returns.
+4. A stale cached endpoint that has never registered is discarded after its first
+   failure and mDNS discovery continues on a non-blocking retry timer.
+
+Recovery logs include WiFi status, local address, gateway, DNS server, and RSSI when
+WiFi connects or is deliberately reset. This distinguishes radio/link loss from an
+unreachable backend during field diagnosis. WebSocket connection state, write
+errors, and the registration acknowledgement timeout provide TCP/application-level
+liveness detection; the measurement outbox retains unacknowledged readings across
+reconnects.
+
 Firmware für einen Fermentationssensor auf dem **Arduino Nano RP2040 Connect**. Das Gerät erfasst Temperaturen und Differenzdruck und arbeitet im Anwendungsnetz ausschließlich als Client. Fachliche Zuordnung und Bewertung (etwa BeerDataStore, `beerId`, Plato oder Gärstatus) sind nicht Bestandteil der Firmware.
 
 ## Getestete Build-Umgebung

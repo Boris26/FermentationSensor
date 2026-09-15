@@ -16,6 +16,7 @@ public:
     explicit ServerClient(
         DeviceIdentity& deviceIdentity
     );
+    ~ServerClient();
 
     void begin(
         const GatewayEndpoint& endpoint
@@ -57,6 +58,7 @@ private:
     void connect();
 
     void disconnect();
+    void destroySocketClient();
 
     void sendRegistration();
 
@@ -123,10 +125,10 @@ private:
 
 
     static constexpr unsigned long
-        INITIAL_RECONNECT_INTERVAL_MS = 5000;
+        INITIAL_RECONNECT_INTERVAL_MS = 1000;
 
-    static constexpr unsigned long
-        MAX_RECONNECT_INTERVAL_MS = 60000;
+    static constexpr uint8_t
+        SOCKET_RECREATE_FAILURE_INTERVAL = 3;
 
     static constexpr unsigned long
         REGISTRATION_TIMEOUT_MS = 7500;

@@ -81,5 +81,6 @@ constexpr unsigned long NETWORK_ERROR_LED_BLINK_INTERVAL_MS = 500;
 constexpr unsigned long BACKEND_ERROR_LED_BLINK_INTERVAL_MS = 1500;
 
 // Gateway lookup/reconnect policy
-constexpr uint8_t GATEWAY_REDISCOVERY_FAILURE_THRESHOLD = 3;
+// Three attempts recreate the socket; three such cycles escalate to WiFi.
+constexpr uint8_t WIFI_RECOVERY_FAILURE_THRESHOLD = 9;
 constexpr unsigned long GATEWAY_DISCOVERY_RETRY_INTERVAL_MS = 10000;

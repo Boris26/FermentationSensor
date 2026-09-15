@@ -1,12 +1,30 @@
 #include "network/ServerClient.h"
 #include "session/MeasurementSession.h"
 
+namespace
+{
+constexpr unsigned long RECONNECT_BACKOFF_MS[] = {1000, 2000, 5000, 10000, 30000};
+
+unsigned long reconnectDelay(uint8_t failures)
+{
+    const size_t count = sizeof(RECONNECT_BACKOFF_MS) / sizeof(RECONNECT_BACKOFF_MS[0]);
+    size_t index = failures == 0 ? 0 : failures - 1;
+    if (index >= count) index = count - 1;
+    return RECONNECT_BACKOFF_MS[index];
+}
+}
 
 ServerClient::ServerClient(
     DeviceIdentity& deviceIdentity
 )
     : _deviceIdentity(deviceIdentity)
 {
+}
+
+ServerClient::~ServerClient()
+{
+    disconnect();
+    destroySocketClient();
 }
 
 
@@ -25,8 +43,7 @@ void ServerClient::begin(
 
     if (_configured) {
         disconnect();
-        delete _webSocketClient;
-        _webSocketClient = nullptr;
+        destroySocketClient();
     }
 
     _endpoint = endpoint;
@@ -218,6 +235,7 @@ void ServerClient::onNetworkDisconnected()
 void ServerClient::stop()
 {
     disconnect();
+    destroySocketClient();
     _configured = false;
     _failedConnectionCycles = 0;
 }
@@ -245,6 +263,14 @@ void ServerClient::connect()
     _lastConnectionAttemptMs =
         millis();
 
+
+    // Reusing a client is cheap for transient failures. Periodically destroy the
+    // complete WebSocket/TCP stack so stale library state cannot survive forever.
+    if (_failedConnectionCycles > 0 &&
+        _failedConnectionCycles % SOCKET_RECREATE_FAILURE_INTERVAL == 0) {
+        Serial.println("ServerClient: recreating WebSocket and TCP clients.");
+        destroySocketClient();
+    }
 
     if (_webSocketClient == nullptr) {
         _webSocketClient =
@@ -320,15 +346,7 @@ void ServerClient::connect()
 
         if (_failedConnectionCycles < 255) ++_failedConnectionCycles;
 
-        _reconnectIntervalMs *= 2;
-
-        if (
-            _reconnectIntervalMs >
-            MAX_RECONNECT_INTERVAL_MS
-        ) {
-            _reconnectIntervalMs =
-                MAX_RECONNECT_INTERVAL_MS;
-        }
+        _reconnectIntervalMs = reconnectDelay(_failedConnectionCycles);
 
         Serial.print(
             "ServerClient: next reconnect in ms="
@@ -376,6 +394,16 @@ void ServerClient::disconnect()
     }
 
 
+    _wifiClient.stop();
+}
+
+void ServerClient::destroySocketClient()
+{
+    if (_webSocketClient != nullptr) {
+        _webSocketClient->stop();
+        delete _webSocketClient;
+        _webSocketClient = nullptr;
+    }
     _wifiClient.stop();
 }
 

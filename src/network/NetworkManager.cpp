@@ -6,6 +6,17 @@ namespace
 {
 constexpr unsigned long CONNECTION_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long WIFI_CONNECTION_TIMEOUT_MS = 1000;
+constexpr unsigned long WIFI_RESTART_SETTLE_MS = 1000;
+
+void printNetworkDiagnostics()
+{
+    Serial.print("NetworkManager: status="); Serial.print(WiFi.status());
+    Serial.print(" ip="); Serial.print(WiFi.localIP());
+    Serial.print(" gateway="); Serial.print(WiFi.gatewayIP());
+    Serial.print(" dns="); Serial.print(WiFi.dnsIP());
+    Serial.print(" rssi="); Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+}
 }
 
 void NetworkManager::begin(const WifiCredentials& credentials)
@@ -40,6 +51,15 @@ void NetworkManager::update()
         return;
     }
 
+    const unsigned long now = millis();
+
+    if (_restartPending) {
+        if (now - _restartRequestedMs < WIFI_RESTART_SETTLE_MS) return;
+        _restartPending = false;
+        connect();
+        return;
+    }
+
     if (WiFi.status() == WL_CONNECTED) {
         if (_connectionStarted) {
             _connectionStarted = false;
@@ -47,18 +67,11 @@ void NetworkManager::update()
             Serial.println();
             Serial.println("NetworkManager: connected.");
 
-            Serial.print("IP address: ");
-            Serial.println(WiFi.localIP());
-
-            Serial.print("Signal strength: ");
-            Serial.print(WiFi.RSSI());
-            Serial.println(" dBm");
+            printNetworkDiagnostics();
         }
 
         return;
     }
-
-    const unsigned long now = millis();
 
     if (!_connectionStarted) {
         connect();
@@ -79,7 +92,20 @@ void NetworkManager::update()
 
 bool NetworkManager::isConnected() const
 {
-    return WiFi.status() == WL_CONNECTED;
+    return !_restartPending && WiFi.status() == WL_CONNECTED;
+}
+
+void NetworkManager::requestReconnect(const char* reason)
+{
+    if (!_credentials.isValid() || _restartPending) return;
+    Serial.print("NetworkManager: controlled WiFi reset: ");
+    Serial.println(reason);
+    printNetworkDiagnostics();
+    WiFi.disconnect();
+    WiFi.end();
+    _connectionStarted = false;
+    _restartPending = true;
+    _restartRequestedMs = millis();
 }
 
 void NetworkManager::connect()
