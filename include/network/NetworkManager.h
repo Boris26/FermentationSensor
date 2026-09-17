@@ -22,4 +22,5 @@ private:
     bool _connectionStarted = false;
     bool _restartPending = false;
     unsigned long _restartRequestedMs = 0;
+    int _lastReportedStatus = -1;
 };

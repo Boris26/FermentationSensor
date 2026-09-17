@@ -101,18 +101,58 @@ void FermentationSensorApplication::begin()
 
 void FermentationSensorApplication::update()
 {
+    const unsigned long loopStart = millis();
+    unsigned long partStart = loopStart;
     _maintenanceConsole.update(_measurementSequenceReady);
+    const unsigned long maintenanceMs = millis() - partStart;
+    partStart = millis();
     _sensorSession.updateInput();
+    const unsigned long inputMs = millis() - partStart;
+    partStart = millis();
     _networkManager.update();
+    const unsigned long wifiMs = millis() - partStart;
+    partStart = millis();
     _wifiSetupPortal.update();
+    const unsigned long portalMs = millis() - partStart;
+    partStart = millis();
     _gatewayConnection.update();
+    const unsigned long socketMs = millis() - partStart;
+    partStart = millis();
     _configHttpServer.update();
+    const unsigned long configServerMs = millis() - partStart;
+    partStart = millis();
     _sensorSession.updateMeasurements(_measurementSequenceReady);
+    const unsigned long temperatureMs = millis() - partStart;
+    partStart = millis();
     _statusController.update(
         _measurementSequenceReady, _sensorSession.sensorsReady()
     );
+    const unsigned long statusMs = millis() - partStart;
+    partStart = millis();
     _sensorSession.updateSessionInput();
+    const unsigned long sessionAndPressureMs = millis() - partStart;
+    partStart = millis();
     _measurementTransport.update(_measurementSequenceReady);
+    const unsigned long transportMs = millis() - partStart;
+    const unsigned long loopDuration = millis() - loopStart;
+
+    if (loopDuration > 100) {
+        Serial.print('['); Serial.print(millis());
+        Serial.print(" ms] SLOW_LOOP duration="); Serial.print(loopDuration);
+        Serial.print(" ms severity=");
+        Serial.println(loopDuration > 1000 ? ">1000ms" :
+            (loopDuration > 500 ? ">500ms" : ">100ms"));
+        Serial.print("  MaintenanceConsole.update: "); Serial.print(maintenanceMs); Serial.println(" ms");
+        Serial.print("  MeasurementButton.update: "); Serial.print(inputMs); Serial.println(" ms");
+        Serial.print("  NetworkManager.update: "); Serial.print(wifiMs); Serial.println(" ms");
+        Serial.print("  WifiSetupPortal.update: "); Serial.print(portalMs); Serial.println(" ms");
+        Serial.print("  ServerClient/Gateway.update: "); Serial.print(socketMs); Serial.println(" ms");
+        Serial.print("  ConfigHttpServer.update: "); Serial.print(configServerMs); Serial.println(" ms");
+        Serial.print("  TemperatureSensor.update: "); Serial.print(temperatureMs); Serial.println(" ms");
+        Serial.print("  StatusController.update: "); Serial.print(statusMs); Serial.println(" ms");
+        Serial.print("  Session/PressureSensor.update: "); Serial.print(sessionAndPressureMs); Serial.println(" ms");
+        Serial.print("  MeasurementTransport.update: "); Serial.print(transportMs); Serial.println(" ms");
+    }
 }
 
 void FermentationSensorApplication::resetRuntimeMeasurementState()

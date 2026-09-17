@@ -47,6 +47,14 @@ void NetworkManager::begin(const WifiCredentials& credentials)
 
 void NetworkManager::update()
 {
+    const int wifiStatus = WiFi.status();
+    if (wifiStatus != _lastReportedStatus) {
+        Serial.print('['); Serial.print(millis());
+        Serial.print(" ms] WIFI_STATUS_CHANGED status="); Serial.print(wifiStatus);
+        Serial.print(" rssi="); Serial.println(wifiStatus == WL_CONNECTED ? WiFi.RSSI() : 0);
+        _lastReportedStatus = wifiStatus;
+    }
+
     if (!_credentials.isValid()) {
         return;
     }
@@ -60,12 +68,13 @@ void NetworkManager::update()
         return;
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (wifiStatus == WL_CONNECTED) {
         if (_connectionStarted) {
             _connectionStarted = false;
 
             Serial.println();
-            Serial.println("NetworkManager: connected.");
+            Serial.print('['); Serial.print(now);
+            Serial.println(" ms] WIFI_CONNECTED");
 
             printNetworkDiagnostics();
         }
@@ -110,7 +119,8 @@ void NetworkManager::requestReconnect(const char* reason)
 
 void NetworkManager::connect()
 {
-    Serial.print("NetworkManager: connecting to ");
+    Serial.print('['); Serial.print(millis());
+    Serial.print(" ms] WIFI_CONNECT_ATTEMPT ssid=");
     Serial.println(_credentials.ssid);
 
     _lastConnectionAttempt = millis();

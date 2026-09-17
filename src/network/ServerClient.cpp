@@ -23,7 +23,7 @@ ServerClient::ServerClient(
 
 ServerClient::~ServerClient()
 {
-    disconnect();
+    disconnect("client destruction");
     destroySocketClient();
 }
 
@@ -42,7 +42,7 @@ void ServerClient::begin(
 
 
     if (_configured) {
-        disconnect();
+        disconnect("endpoint reconfiguration");
         destroySocketClient();
     }
 
@@ -114,7 +114,10 @@ void ServerClient::update()
         !_webSocketClient->connected()
     ) {
         if (_failedConnectionCycles < 255) ++_failedConnectionCycles;
-        disconnect();
+        disconnect("underlying TCP/WebSocket not connected");
+        Serial.print('['); Serial.print(millis());
+        Serial.print(" ms] WS_RECONNECT_SCHEDULED delay=");
+        Serial.println(_reconnectIntervalMs);
 
         return;
     }
@@ -134,7 +137,7 @@ void ServerClient::update()
         );
 
         if (_failedConnectionCycles < 255) ++_failedConnectionCycles;
-        disconnect();
+        disconnect("registration ACK timeout");
     }
 }
 
@@ -229,12 +232,12 @@ void ServerClient::onNetworkDisconnected()
         "ServerClient: WiFi connection lost."
     );
 
-    disconnect();
+    disconnect("WiFi disconnected");
 }
 
 void ServerClient::stop()
 {
-    disconnect();
+    disconnect("client stopped");
     destroySocketClient();
     _configured = false;
     _failedConnectionCycles = 0;
@@ -243,8 +246,10 @@ void ServerClient::stop()
 void ServerClient::requestReconnect()
 {
     if (!_configured) return;
-    disconnect();
+    disconnect("reconnect explicitly requested");
     _lastConnectionAttemptMs = millis() - _reconnectIntervalMs;
+    Serial.print('['); Serial.print(millis());
+    Serial.println(" ms] WS_RECONNECT_SCHEDULED delay=0");
 }
 
 uint8_t ServerClient::failedConnectionCycles() const
@@ -300,9 +305,8 @@ void ServerClient::connect()
     _wifiClient.stop();
 
 
-    Serial.print(
-        "ServerClient: connecting to ws://"
-    );
+    Serial.print('['); Serial.print(millis());
+    Serial.print(" ms] WS_CONNECT_ATTEMPT url=ws://");
 
     Serial.print(
         _endpoint.address
@@ -364,22 +368,38 @@ void ServerClient::connect()
     _reconnectIntervalMs =
         INITIAL_RECONNECT_INTERVAL_MS;
 
+    _connectedAtMs = millis();
+    _lastRxMs = _connectedAtMs;
+    _lastTxMs = _connectedAtMs;
 
-    Serial.println(
-        "ServerClient: connected."
-    );
+
+    Serial.print('['); Serial.print(_connectedAtMs);
+    Serial.println(" ms] WS_CONNECTED");
 
 
     sendRegistration();
 }
 
 
-void ServerClient::disconnect()
+void ServerClient::printDisconnectDiagnostics(const char* reason) const
+{
+    const unsigned long now = millis();
+    const int wifiStatus = WiFi.status();
+    Serial.print('['); Serial.print(now); Serial.println(" ms] WS_DISCONNECTED");
+    Serial.print("  reason="); Serial.println(reason);
+    Serial.print("  wifiStatus="); Serial.println(wifiStatus);
+    Serial.print("  rssi="); Serial.println(wifiStatus == WL_CONNECTED ? WiFi.RSSI() : 0);
+    Serial.print("  socketConnected=");
+    Serial.println(_webSocketClient != nullptr && _webSocketClient->connected());
+    Serial.print("  connectionAge="); Serial.println(now - _connectedAtMs);
+    Serial.print("  lastRxAge="); Serial.println(now - _lastRxMs);
+    Serial.print("  lastTxAge="); Serial.println(now - _lastTxMs);
+}
+
+void ServerClient::disconnect(const char* reason)
 {
     if (_connected) {
-        Serial.println(
-            "ServerClient: disconnected."
-        );
+        printDisconnectDiagnostics(reason);
     }
 
 
@@ -472,7 +492,7 @@ bool ServerClient::sendTextMessage(
         Serial.print(description);
         Serial.println(" message exceeds WebSocket TX buffer.");
 
-        disconnect();
+        disconnect("outgoing message exceeds TX buffer");
         return false;
     }
 
@@ -487,7 +507,7 @@ bool ServerClient::sendTextMessage(
         Serial.print(" message, result=");
         Serial.println(beginResult);
 
-        disconnect();
+        disconnect("beginMessage failed");
         return false;
     }
 
@@ -507,7 +527,7 @@ bool ServerClient::sendTextMessage(
         Serial.print(" expected=");
         Serial.println(message.length());
 
-        disconnect();
+        disconnect("incomplete WebSocket write");
         return false;
     }
 
@@ -520,10 +540,14 @@ bool ServerClient::sendTextMessage(
         Serial.print(" message, result=");
         Serial.println(endResult);
 
-        disconnect();
+        disconnect("endMessage failed");
         return false;
     }
 
+    _lastTxMs = millis();
+    Serial.print('['); Serial.print(_lastTxMs);
+    Serial.print(" ms] WS_TX type="); Serial.print(description);
+    Serial.print(" bytes="); Serial.println(message.length());
     return true;
 }
 
@@ -556,7 +580,7 @@ void ServerClient::handleIncomingMessages()
         );
         Serial.println(messageSize);
 
-        disconnect();
+        disconnect("incoming message exceeds RX buffer");
         return;
     }
 
@@ -565,7 +589,18 @@ void ServerClient::handleIncomingMessages()
         _webSocketClient->messageType();
 
 
+    _lastRxMs = millis();
+    if (messageType == TYPE_PING) {
+        Serial.print('['); Serial.print(_lastRxMs); Serial.println(" ms] WS_RX PING");
+        return;
+    }
+    if (messageType == TYPE_PONG) {
+        Serial.print('['); Serial.print(_lastRxMs); Serial.println(" ms] WS_RX PONG");
+        return;
+    }
     if (messageType != TYPE_TEXT) {
+        Serial.print('['); Serial.print(_lastRxMs);
+        Serial.print(" ms] WS_RX type="); Serial.println(messageType);
         return;
     }
 
@@ -596,9 +631,9 @@ void ServerClient::handleIncomingMessages()
     }
 
 
-    Serial.print(
-        "ServerClient: received: "
-    );
+    Serial.print('['); Serial.print(_lastRxMs);
+    Serial.print(" ms] WS_RX TEXT bytes="); Serial.print(messageSize);
+    Serial.print(" data=");
 
     Serial.println(
         message
