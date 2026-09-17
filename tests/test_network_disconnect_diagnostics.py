@@ -23,6 +23,10 @@ class NetworkDisconnectDiagnosticTests(unittest.TestCase):
         self.assertIn("WIFI_STATUS_CHANGED", NETWORK)
         self.assertIn("WIFI_CONNECTED", NETWORK)
 
+    def test_wifi_rssi_is_logged_periodically(self):
+        self.assertIn("WIFI_RSSI_LOG_INTERVAL_MS = 30000", NETWORK)
+        self.assertIn("WIFI_RSSI rssi=", NETWORK)
+
     def test_slow_loop_log_has_requested_thresholds_and_components(self):
         for token in ("loopDuration > 100", "loopDuration > 500",
                       "loopDuration > 1000", "NetworkManager.update",

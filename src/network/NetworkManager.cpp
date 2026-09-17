@@ -7,6 +7,7 @@ namespace
 constexpr unsigned long CONNECTION_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long WIFI_CONNECTION_TIMEOUT_MS = 1000;
 constexpr unsigned long WIFI_RESTART_SETTLE_MS = 1000;
+constexpr unsigned long WIFI_RSSI_LOG_INTERVAL_MS = 30000;
 
 void printNetworkDiagnostics()
 {
@@ -77,6 +78,12 @@ void NetworkManager::update()
             Serial.println(" ms] WIFI_CONNECTED");
 
             printNetworkDiagnostics();
+            _lastRssiLogMs = now;
+        } else if (now - _lastRssiLogMs >= WIFI_RSSI_LOG_INTERVAL_MS) {
+            Serial.print('['); Serial.print(now);
+            Serial.print(" ms] WIFI_RSSI rssi="); Serial.print(WiFi.RSSI());
+            Serial.println(" dBm");
+            _lastRssiLogMs = now;
         }
 
         return;
