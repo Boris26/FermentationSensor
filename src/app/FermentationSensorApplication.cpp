@@ -5,6 +5,11 @@
 #include "app/FermentationSensorApplication.h"
 #include "config/Config.h"
 
+namespace
+{
+constexpr unsigned long SLOW_LOOP_DETAIL_LOG_INTERVAL_MS = 60000;
+}
+
 FermentationSensorApplication::FermentationSensorApplication() :
     _storageMaintenance(_flashStorage),
     _deviceIdentity(_flashStorage),
@@ -136,8 +141,22 @@ void FermentationSensorApplication::update()
     const unsigned long transportMs = millis() - partStart;
     const unsigned long loopDuration = millis() - loopStart;
 
-    if (loopDuration > 100) {
-        Serial.print('['); Serial.print(millis());
+    static unsigned long lastModerateSlowLoopLogMs = 0;
+    const unsigned long now = millis();
+    const bool severeSlowLoop = loopDuration > 500;
+    const bool moderateSlowLoopDue =
+        loopDuration > 100 &&
+        (
+            lastModerateSlowLoopLogMs == 0 ||
+            now - lastModerateSlowLoopLogMs >= SLOW_LOOP_DETAIL_LOG_INTERVAL_MS
+        );
+
+    if (severeSlowLoop || moderateSlowLoopDue) {
+        if (!severeSlowLoop) {
+            lastModerateSlowLoopLogMs = now;
+        }
+
+        Serial.print('['); Serial.print(now);
         Serial.print(" ms] SLOW_LOOP duration="); Serial.print(loopDuration);
         Serial.print(" ms severity=");
         Serial.println(loopDuration > 1000 ? ">1000ms" :
