@@ -33,6 +33,12 @@ class NetworkDisconnectDiagnosticTests(unittest.TestCase):
                       "TemperatureSensor.update", "PressureSensor.update"):
             self.assertIn(token, APP)
 
+    def test_moderate_slow_loop_logging_is_rate_limited(self):
+        self.assertIn("SLOW_LOOP_DETAIL_LOG_INTERVAL_MS = 60000", APP)
+        self.assertIn("severeSlowLoop = loopDuration > 500", APP)
+        self.assertIn("lastModerateSlowLoopLogMs == 0", APP)
+        self.assertIn("severeSlowLoop || moderateSlowLoopDue", APP)
+
     def test_temperature_conversion_is_async_but_pressure_wait_is_known(self):
         self.assertIn("setWaitForConversion(false)", TEMPERATURE)
         self.assertIn("delay(CONVERSION_TIME_MS)", PRESSURE_DRIVER)
