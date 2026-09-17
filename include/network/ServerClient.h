@@ -57,8 +57,9 @@ public:
 private:
     void connect();
 
-    void disconnect();
+    void disconnect(const char* reason);
     void destroySocketClient();
+    void printDisconnectDiagnostics(const char* reason) const;
 
     void sendRegistration();
 
@@ -119,6 +120,9 @@ private:
     unsigned long _lastConnectionAttemptMs = 0;
 
     unsigned long _registrationSentMs = 0;
+    unsigned long _connectedAtMs = 0;
+    unsigned long _lastRxMs = 0;
+    unsigned long _lastTxMs = 0;
 
     unsigned long _reconnectIntervalMs =
         INITIAL_RECONNECT_INTERVAL_MS;
