@@ -27,17 +27,16 @@ class NetworkDisconnectDiagnosticTests(unittest.TestCase):
         self.assertIn("WIFI_RSSI_LOG_INTERVAL_MS = 30000", NETWORK)
         self.assertIn("WIFI_RSSI rssi=", NETWORK)
 
-    def test_failed_wifi_connect_logs_status_and_begin_result(self):
+    def test_failed_wifi_connect_logs_status_begin_result_and_reason_code(self):
         for token in ("WIFI_CONNECT_FAILED", "WIFI_BEGIN_RESULT",
-                      "statusBefore=", "attemptAgeMs=", "wifiStatusName"):
+                      "statusBefore=", "attemptAgeMs=", "reasonCode=",
+                      "wifiStatusName"):
             self.assertIn(token, NETWORK)
 
-    def test_target_wifi_scan_is_rate_limited_and_identifies_access_point(self):
-        for token in ("WIFI_SCAN_DIAGNOSTIC_INTERVAL_MS = 60000",
-                      "WIFI_SCAN_START", "WIFI_SCAN_RESULT",
-                      "WIFI_SCAN_MATCH", "WIFI_SCAN_NO_MATCH",
-                      "bssid=", "channel=", "encryptionType="):
+    def test_connected_wifi_diagnostics_identify_access_point_without_scanning(self):
+        for token in ("ssid=", "bssid=", "encryptionType=", "WiFi.BSSID(bssid)"):
             self.assertIn(token, NETWORK)
+        self.assertNotIn("scanNetworks()", NETWORK)
 
     def test_slow_loop_log_has_requested_thresholds_and_components(self):
         for token in ("loopDuration > 100", "loopDuration > 500",
