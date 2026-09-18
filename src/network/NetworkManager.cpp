@@ -8,7 +8,6 @@ constexpr unsigned long CONNECTION_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long WIFI_CONNECTION_TIMEOUT_MS = 1000;
 constexpr unsigned long WIFI_RESTART_SETTLE_MS = 1000;
 constexpr unsigned long WIFI_RSSI_LOG_INTERVAL_MS = 30000;
-constexpr unsigned long WIFI_SCAN_DIAGNOSTIC_INTERVAL_MS = 60000;
 
 const char* wifiStatusName(int status)
 {
@@ -33,8 +32,9 @@ const char* wifiStatusName(int status)
 
 void printBssid(const uint8_t* bssid)
 {
-    for (int i = 0; i < 6; ++i) {
-        if (i > 0) Serial.print(':');
+    // WiFiNINA returns the bytes in reverse display order.
+    for (int i = 5; i >= 0; --i) {
+        if (i < 5) Serial.print(':');
         if (bssid[i] < 0x10) Serial.print('0');
         Serial.print(bssid[i], HEX);
     }
@@ -43,13 +43,19 @@ void printBssid(const uint8_t* bssid)
 void printNetworkDiagnostics()
 {
     const int status = WiFi.status();
+    uint8_t bssid[6] = {0};
+    WiFi.BSSID(bssid);
+
     Serial.print("NetworkManager: status="); Serial.print(status);
     Serial.print('('); Serial.print(wifiStatusName(status)); Serial.print(')');
+    Serial.print(" ssid="); Serial.print(WiFi.SSID());
+    Serial.print(" bssid="); printBssid(bssid);
     Serial.print(" ip="); Serial.print(WiFi.localIP());
     Serial.print(" gateway="); Serial.print(WiFi.gatewayIP());
     Serial.print(" dns="); Serial.print(WiFi.dnsIP());
     Serial.print(" rssi="); Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
+    Serial.print(" dBm encryptionType="); Serial.print(WiFi.encryptionType());
+    Serial.println();
 }
 }
 
@@ -133,14 +139,6 @@ void NetworkManager::update()
         CONNECTION_RETRY_INTERVAL_MS
     ) {
         logConnectionFailure(wifiStatus, now);
-
-        if (
-            _lastScanDiagnosticsMs == 0 ||
-            now - _lastScanDiagnosticsMs >= WIFI_SCAN_DIAGNOSTIC_INTERVAL_MS
-        ) {
-            logTargetNetworkScan(now);
-        }
-
         connect();
     }
 }
@@ -185,8 +183,9 @@ void NetworkManager::connect()
 
     Serial.print('['); Serial.print(millis());
     Serial.print(" ms] WIFI_BEGIN_RESULT status="); Serial.print(beginResult);
-    Serial.print(" name=");
-    Serial.println(wifiStatusName(beginResult));
+    Serial.print(" name="); Serial.print(wifiStatusName(beginResult));
+    Serial.print(" reasonCode=");
+    Serial.println(WiFi.reasonCode());
 }
 
 void NetworkManager::logConnectionFailure(int wifiStatus, unsigned long now)
@@ -194,48 +193,7 @@ void NetworkManager::logConnectionFailure(int wifiStatus, unsigned long now)
     Serial.print('['); Serial.print(now);
     Serial.print(" ms] WIFI_CONNECT_FAILED status="); Serial.print(wifiStatus);
     Serial.print(" name="); Serial.print(wifiStatusName(wifiStatus));
+    Serial.print(" reasonCode="); Serial.print(WiFi.reasonCode());
     Serial.print(" attemptAgeMs=");
     Serial.println(now - _lastConnectionAttempt);
-}
-
-void NetworkManager::logTargetNetworkScan(unsigned long now)
-{
-    _lastScanDiagnosticsMs = now;
-
-    Serial.print('['); Serial.print(now);
-    Serial.print(" ms] WIFI_SCAN_START target=");
-    Serial.println(_credentials.ssid);
-
-    const int networkCount = WiFi.scanNetworks();
-
-    Serial.print('['); Serial.print(millis());
-    Serial.print(" ms] WIFI_SCAN_RESULT count=");
-    Serial.println(networkCount);
-
-    if (networkCount < 0) {
-        Serial.println("WIFI_SCAN_FAILED");
-        return;
-    }
-
-    int targetMatches = 0;
-    for (int i = 0; i < networkCount; ++i) {
-        const String ssid = WiFi.SSID(i);
-        if (ssid != _credentials.ssid) continue;
-
-        ++targetMatches;
-        uint8_t bssid[6] = {0};
-        WiFi.BSSID(i, bssid);
-
-        Serial.print("WIFI_SCAN_MATCH ssid="); Serial.print(ssid);
-        Serial.print(" bssid="); printBssid(bssid);
-        Serial.print(" rssi="); Serial.print(WiFi.RSSI(i));
-        Serial.print(" dBm channel="); Serial.print(WiFi.channel(i));
-        Serial.print(" encryptionType=");
-        Serial.println(WiFi.encryptionType(i));
-    }
-
-    if (targetMatches == 0) {
-        Serial.print("WIFI_SCAN_NO_MATCH target=");
-        Serial.println(_credentials.ssid);
-    }
 }
