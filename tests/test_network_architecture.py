@@ -1,7 +1,7 @@
 """Host-side architectural regression checks for the embedded network flow.
 
 These checks deliberately avoid mocking Arduino drivers. They protect the policy and
-protocol invariants which can be verified without RP2040/NINA hardware; packet and
+protocol invariants which can be verified without target hardware; packet and
 socket behaviour is covered by the manual hardware test plan in the README/report.
 """
 from pathlib import Path

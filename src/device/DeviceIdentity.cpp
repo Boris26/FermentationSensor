@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <cstring>
-#include <WiFiNINA.h>
+#include <esp_system.h>
 
 namespace
 {
@@ -413,17 +413,9 @@ String DeviceIdentity::generateUuid() const
 {
     char uuid[37];
 
-    byte mac[6] = {};
-    WiFi.macAddress(mac);
-
-    uint32_t seed = 2166136261UL;
-    for (size_t index = 0; index < sizeof(mac); ++index) {
-        seed ^= mac[index];
-        seed *= 16777619UL;
-    }
-    seed ^= micros();
-    seed ^= static_cast<uint32_t>(analogRead(A0)) << 16;
-    randomSeed(seed);
+    // Seed UUID generation from the ESP32 hardware random generator. The UUID
+    // is then stored by saveConfiguration() and reused on every later boot.
+    randomSeed(esp_random());
 
 
     const uint32_t part1 =

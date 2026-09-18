@@ -1,7 +1,8 @@
 #pragma once
 
 #include <Arduino.h>
-#include <WiFiNINA.h>
+#include <WiFi.h>
+#include <WiFiUdp.h>
 
 #include "network/GatewayEndpoint.h"
 

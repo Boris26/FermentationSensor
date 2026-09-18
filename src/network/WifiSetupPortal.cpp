@@ -8,9 +8,8 @@ WifiSetupPortal::WifiSetupPortal(WifiCredentialStore& credentialStore)
 void WifiSetupPortal::begin()
 {
     Serial.println("WifiSetupPortal: starting access point...");
-    const int status = WiFi.beginAP("FERM-01-Setup");
-
-    if (status != WL_AP_LISTENING) {
+    WiFi.mode(WIFI_AP);
+    if (!WiFi.softAP("FERM-01-Setup")) {
         Serial.println("WifiSetupPortal: failed to start access point.");
         return;
     }
@@ -19,7 +18,7 @@ void WifiSetupPortal::begin()
     _active = true;
     Serial.println("WifiSetupPortal: access point started.");
     Serial.print("AP IP address: ");
-    Serial.println(WiFi.localIP());
+    Serial.println(WiFi.softAPIP());
     Serial.println("WifiSetupPortal: web server started.");
 }
 
