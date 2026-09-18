@@ -33,7 +33,6 @@ void SensorSessionCoordinator::initializeSessionIfSensorsReady()
 {
     if (!_temperatureSensor.areAllSensorsConnected()) {
         _sensorsReady = false;
-        _status.turnMeasurementLedsOff();
         Serial.println("Temperature sensors not ready.");
         return;
     }
