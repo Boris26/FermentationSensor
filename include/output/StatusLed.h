@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "output/LedBlinkState.h"
 
 class StatusLed
 {
@@ -18,10 +19,5 @@ public:
 
 private:
     uint8_t pin_;
-
-    bool ledState_;
-    bool blinking_;
-
-    unsigned long blinkIntervalMs_;
-    unsigned long lastToggleMs_;
+    LedBlinkState state_;
 };
