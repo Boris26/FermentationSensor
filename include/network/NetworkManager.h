@@ -16,7 +16,6 @@ public:
 private:
     void connect();
     void logConnectionFailure(int wifiStatus, unsigned long now);
-    void logTargetNetworkScan(unsigned long now);
 
     WifiCredentials _credentials;
 
@@ -25,6 +24,5 @@ private:
     bool _restartPending = false;
     unsigned long _restartRequestedMs = 0;
     unsigned long _lastRssiLogMs = 0;
-    unsigned long _lastScanDiagnosticsMs = 0;
     int _lastReportedStatus = -1;
 };
