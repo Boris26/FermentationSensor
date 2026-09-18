@@ -12,13 +12,13 @@ constexpr unsigned long SERIAL_BAUD_RATE = 115200;
 
 
 // Pins
-constexpr uint8_t ONE_WIRE_PIN = 4;
+constexpr uint8_t ONE_WIRE_PIN = 5; // D2 / GPIO5
 
-constexpr uint8_t MEASUREMENT_BUTTON_PIN = 3;
+constexpr uint8_t MEASUREMENT_BUTTON_PIN = 6; // D3 / GPIO6
 
-constexpr uint8_t STATUS_LED_PIN = 2;
-constexpr uint8_t SENSOR_ERROR_LED_PIN = 5;
-constexpr uint8_t SESSION_LED_PIN = 6;
+constexpr uint8_t STATUS_LED_PIN = 7;       // D4 / GPIO7
+constexpr uint8_t SENSOR_ERROR_LED_PIN = 8; // D5 / GPIO8
+constexpr uint8_t SESSION_LED_PIN = 9;      // D6 / GPIO9
 
 
 // Temperature

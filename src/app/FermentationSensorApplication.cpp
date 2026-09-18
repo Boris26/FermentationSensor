@@ -1,6 +1,4 @@
 #include <Arduino.h>
-#include <kv_config.h>
-#include <kvstore_global_api.h>
 
 #include "app/FermentationSensorApplication.h"
 #include "config/Config.h"
@@ -52,16 +50,7 @@ FermentationSensorApplication::FermentationSensorApplication() :
 
 void FermentationSensorApplication::printBootDiagnostics()
 {
-    mbed::bd_addr_t startAddress = 0;
-    mbed::bd_size_t size = 0;
-    const int result = kv_get_default_flash_addresses(&startAddress, &size);
-    Serial.print("KV flash result: ");
-    Serial.println(result);
-    Serial.print("KV start address: 0x");
-    Serial.println(static_cast<unsigned long>(startAddress), HEX);
-    Serial.print("KV size: ");
-    Serial.println(static_cast<unsigned long>(size));
-    Serial.println();
+    Serial.println("Target: Arduino Nano ESP32 (ESP32-S3), persistence: NVS");
     Serial.print(DEVICE_ID);
     Serial.println(" starting...");
 }

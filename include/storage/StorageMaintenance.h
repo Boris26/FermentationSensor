@@ -2,7 +2,7 @@
 
 #include "storage/FlashStorage.h"
 
-// Explicit TDBStore compaction. This is intentionally separate from both
+// Explicit NVS rebuild. This is intentionally separate from both
 // runtime measurement-state reset and factory reset.
 class StorageMaintenance
 {
