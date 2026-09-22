@@ -33,10 +33,15 @@ class NetworkDisconnectDiagnosticTests(unittest.TestCase):
                       "wifiStatusName"):
             self.assertIn(token, NETWORK)
 
-    def test_connected_wifi_diagnostics_identify_access_point_without_scanning(self):
+    def test_connected_wifi_diagnostics_identify_access_point_without_manual_scan(self):
         for token in ("ssid=", "bssid=", "channel=", "WiFi.BSSIDstr()"):
             self.assertIn(token, NETWORK)
         self.assertNotIn("scanNetworks()", NETWORK)
+
+    def test_connection_prefers_strongest_matching_access_point(self):
+        self.assertIn("WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);", NETWORK)
+        self.assertIn("WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);", NETWORK)
+        self.assertIn("access point selection=all-channel strongest-signal", NETWORK)
 
     def test_slow_loop_log_has_requested_thresholds_and_components(self):
         for token in ("loopDuration > 100", "loopDuration > 500",
