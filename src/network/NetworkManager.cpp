@@ -252,7 +252,10 @@ void NetworkManager::startRoamingScan(unsigned long now, int32_t currentRssi)
 void NetworkManager::finishRoamingScan(int16_t networkCount, unsigned long now)
 {
     uint8_t currentBssid[6] = {0};
-    WiFi.BSSID(currentBssid);
+    const uint8_t* connectedBssid = WiFi.BSSID();
+    if (connectedBssid) {
+        std::memcpy(currentBssid, connectedBssid, sizeof(currentBssid));
+    }
     const int32_t currentRssi = WiFi.RSSI();
 
     bool foundAlternative = false;
