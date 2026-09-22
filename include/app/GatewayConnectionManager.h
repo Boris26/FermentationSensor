@@ -34,5 +34,6 @@ private:
     bool _discoveryAttemptActive = false;
     bool _serverWasRegistered = false;
     unsigned long _nextDiscoveryAttemptMs = 0;
+    unsigned long _nextServerUpdateMs = 0;
     RecoveryState _recoveryState = RecoveryState::WIFI_RECONNECT;
 };
