@@ -11,24 +11,29 @@ public:
     void update();
 
     bool isConnected() const;
-    bool isRoaming() const
-    {
-        return _roamScanActive || _roamSettlePending || _roamRetryPending;
-    }
+    bool isRoaming() const { return _apSelectionActive; }
     void requestReconnect(const char* reason);
 
 private:
-    void connect();
+    void scheduleAccessPointSelection(
+        unsigned long now,
+        const char* reason,
+        bool disconnectCurrent
+    );
+    void updateAccessPointSelection(unsigned long now);
+    void startAccessPointScan(unsigned long now);
+    void finishAccessPointScan(int16_t networkCount, unsigned long now);
+    void handleAccessPointScanFailure(
+        unsigned long now,
+        const char* eventName
+    );
     void connectToAccessPoint(
         int32_t channel,
         const uint8_t* bssid,
         int32_t targetRssi
     );
-    void updateRoaming(unsigned long now);
-    void startRoamingScan(unsigned long now, int32_t currentRssi);
-    void finishRoamingScan(int16_t networkCount, unsigned long now);
-    void handleRoamingScanFailure(unsigned long now, const char* eventName);
-    void cancelRoamingScan();
+    void connectAutomatically(const char* reason);
+    void cancelAccessPointSelection();
     void logConnectionFailure(int wifiStatus, unsigned long now);
 
     WifiCredentials _credentials;
@@ -39,11 +44,15 @@ private:
     unsigned long _restartRequestedMs = 0;
     unsigned long _lastRssiLogMs = 0;
     unsigned long _lastRoamCheckMs = 0;
-    bool _roamScanActive = false;
-    bool _roamSettlePending = false;
-    unsigned long _roamSettleStartedMs = 0;
-    bool _roamRetryPending = false;
-    unsigned long _roamRetryRequestedMs = 0;
-    uint8_t _roamScanFailureCount = 0;
+
+    bool _apSelectionActive = false;
+    bool _apScanSettlePending = false;
+    unsigned long _apScanSettleStartedMs = 0;
+    bool _apScanActive = false;
+    bool _apScanRetryPending = false;
+    unsigned long _apScanRetryRequestedMs = 0;
+    uint8_t _apScanFailureCount = 0;
+    String _apSelectionReason;
+
     int _lastReportedStatus = -1;
 };

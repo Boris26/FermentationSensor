@@ -9,11 +9,10 @@ constexpr unsigned long CONNECTION_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long WIFI_RESTART_SETTLE_MS = 1000;
 constexpr unsigned long WIFI_RSSI_LOG_INTERVAL_MS = 30000;
 constexpr unsigned long WIFI_ROAM_CHECK_INTERVAL_MS = 60000;
-constexpr unsigned long WIFI_ROAM_CONNECTION_SETTLE_MS = 2000;
-constexpr unsigned long WIFI_ROAM_SCAN_RETRY_DELAY_MS = 1500;
-constexpr uint8_t WIFI_ROAM_MAX_SCAN_FAILURES = 2;
+constexpr unsigned long WIFI_AP_SCAN_SETTLE_MS = 500;
+constexpr unsigned long WIFI_AP_SCAN_RETRY_DELAY_MS = 1500;
+constexpr uint8_t WIFI_AP_SCAN_MAX_FAILURES = 2;
 constexpr int32_t WIFI_ROAM_RSSI_THRESHOLD_DBM = -70;
-constexpr int32_t WIFI_ROAM_MIN_IMPROVEMENT_DB = 10;
 
 const char* wifiStatusName(int status)
 {
@@ -29,12 +28,10 @@ const char* wifiStatusName(int status)
     }
 }
 
-void configureAccessPointSelection()
+void configureFallbackAccessPointSelection()
 {
-    // The same SSID may be provided by multiple access points/repeaters.
-    // Scan all channels before connecting and let the ESP32 select the
-    // matching BSSID with the strongest RSSI instead of stopping at the
-    // first acceptable access point it encounters.
+    // Fallback only. Normal operation explicitly scans first and then connects
+    // to the selected BSSID + channel.
     WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
     WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
 }
@@ -70,81 +67,93 @@ void NetworkManager::begin(const WifiCredentials& credentials)
 {
     _credentials = credentials;
     WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
+    WiFi.setAutoReconnect(false);
     WiFi.persistent(false);
-    configureAccessPointSelection();
+    configureFallbackAccessPointSelection();
+
     if (!_credentials.isValid()) {
         Serial.println("NetworkManager: no valid WiFi credentials.");
         return;
     }
-    Serial.println("NetworkManager: access point selection=all-channel strongest-signal");
+
+    Serial.println("NetworkManager: access point selection=pre-connect scan + targeted BSSID");
+    Serial.println("NetworkManager: fallback access point selection=all-channel strongest-signal");
     Serial.print("NetworkManager: roaming threshold=");
     Serial.print(WIFI_ROAM_RSSI_THRESHOLD_DBM);
-    Serial.print(" dBm minimumImprovement=");
-    Serial.print(WIFI_ROAM_MIN_IMPROVEMENT_DB);
-    Serial.print(" dB settleMs=");
-    Serial.print(WIFI_ROAM_CONNECTION_SETTLE_MS);
+    Serial.print(" dBm scanSettleMs=");
+    Serial.print(WIFI_AP_SCAN_SETTLE_MS);
     Serial.print(" retryDelayMs=");
-    Serial.print(WIFI_ROAM_SCAN_RETRY_DELAY_MS);
+    Serial.print(WIFI_AP_SCAN_RETRY_DELAY_MS);
     Serial.print(" checkIntervalMs=");
     Serial.println(WIFI_ROAM_CHECK_INTERVAL_MS);
-    connect();
+
+    scheduleAccessPointSelection(millis(), "initial", false);
 }
 
 void NetworkManager::update()
 {
     const int status = WiFi.status();
     const unsigned long now = millis();
+
     if (status != _lastReportedStatus) {
         Serial.print('['); Serial.print(now); Serial.print(" ms] WIFI_STATUS_CHANGED status=");
         Serial.print(status); Serial.print(" name="); Serial.println(wifiStatusName(status));
         _lastReportedStatus = status;
     }
-    if (!_credentials.isValid()) return;
 
-    if (status != WL_CONNECTED && isRoaming()) {
-        cancelRoamingScan();
-    }
+    if (!_credentials.isValid()) return;
 
     if (_restartPending) {
         if (now - _restartRequestedMs < WIFI_RESTART_SETTLE_MS) return;
+
         _restartPending = false;
         WiFi.mode(WIFI_STA);
-        configureAccessPointSelection();
-        connect();
+        WiFi.setAutoReconnect(false);
+        configureFallbackAccessPointSelection();
+        scheduleAccessPointSelection(now, "controlled_reset", false);
         return;
     }
+
+    if (_apSelectionActive) {
+        updateAccessPointSelection(now);
+        return;
+    }
+
     if (status == WL_CONNECTED) {
         if (_connectionStarted) {
             _connectionStarted = false;
             Serial.print('['); Serial.print(now); Serial.println(" ms] WIFI_CONNECTED");
             printNetworkDiagnostics();
             _lastRssiLogMs = now;
-
-            const int32_t connectedRssi = WiFi.RSSI();
-            if (connectedRssi <= WIFI_ROAM_RSSI_THRESHOLD_DBM) {
-                _roamSettlePending = true;
-                _roamSettleStartedMs = now;
-                _roamRetryPending = false;
-                _roamScanFailureCount = 0;
-                Serial.print('['); Serial.print(now);
-                Serial.print(" ms] WIFI_ROAM_WAIT currentRssi=");
-                Serial.print(connectedRssi);
-                Serial.print(" dBm settleMs=");
-                Serial.println(WIFI_ROAM_CONNECTION_SETTLE_MS);
-            }
+            _lastRoamCheckMs = now;
         } else if (now - _lastRssiLogMs >= WIFI_RSSI_LOG_INTERVAL_MS) {
             Serial.print('['); Serial.print(now); Serial.print(" ms] WIFI_RSSI rssi=");
             Serial.print(WiFi.RSSI()); Serial.println(" dBm");
             _lastRssiLogMs = now;
         }
 
-        updateRoaming(now);
+        const int32_t currentRssi = WiFi.RSSI();
+        if (
+            currentRssi <= WIFI_ROAM_RSSI_THRESHOLD_DBM &&
+            now - _lastRoamCheckMs >= WIFI_ROAM_CHECK_INTERVAL_MS
+        ) {
+            _lastRoamCheckMs = now;
+            scheduleAccessPointSelection(now, "weak_signal", true);
+        }
         return;
     }
-    if (!_connectionStarted || now - _lastConnectionAttempt >= CONNECTION_RETRY_INTERVAL_MS) {
-        if (_connectionStarted) logConnectionFailure(status, now);
-        connect();
+
+    if (_connectionStarted) {
+        if (now - _lastConnectionAttempt < CONNECTION_RETRY_INTERVAL_MS) return;
+        logConnectionFailure(status, now);
+        _connectionStarted = false;
+    }
+
+    if (
+        _lastConnectionAttempt == 0 ||
+        now - _lastConnectionAttempt >= CONNECTION_RETRY_INTERVAL_MS
+    ) {
+        scheduleAccessPointSelection(now, "reconnect", false);
     }
 }
 
@@ -156,25 +165,216 @@ bool NetworkManager::isConnected() const
 void NetworkManager::requestReconnect(const char* reason)
 {
     if (!_credentials.isValid() || _restartPending) return;
-    cancelRoamingScan();
+
+    cancelAccessPointSelection();
     Serial.print("NetworkManager: controlled WiFi reset: "); Serial.println(reason);
     printNetworkDiagnostics();
+
     WiFi.disconnect(true, false);
     _connectionStarted = false;
     _restartPending = true;
     _restartRequestedMs = millis();
 }
 
-void NetworkManager::connect()
+void NetworkManager::scheduleAccessPointSelection(
+    unsigned long now,
+    const char* reason,
+    bool disconnectCurrent
+)
 {
-    const unsigned long now = millis();
-    configureAccessPointSelection();
-    Serial.print('['); Serial.print(now); Serial.print(" ms] WIFI_CONNECT_ATTEMPT ssid=");
-    Serial.print(_credentials.ssid); Serial.print(" statusBefore=");
-    Serial.println(wifiStatusName(WiFi.status()));
-    _lastConnectionAttempt = now;
-    _connectionStarted = true;
-    WiFi.begin(_credentials.ssid.c_str(), _credentials.password.c_str());
+    if (_apSelectionActive) return;
+
+    _apSelectionActive = true;
+    _apScanSettlePending = true;
+    _apScanSettleStartedMs = now;
+    _apScanActive = false;
+    _apScanRetryPending = false;
+    _apScanRetryRequestedMs = 0;
+    _apScanFailureCount = 0;
+    _apSelectionReason = reason == nullptr ? "unknown" : reason;
+
+    WiFi.scanDelete();
+
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SELECTION_STARTED reason=");
+    Serial.print(_apSelectionReason);
+    Serial.print(" ssid="); Serial.println(_credentials.ssid);
+
+    if (disconnectCurrent && WiFi.status() == WL_CONNECTED) {
+        Serial.print('['); Serial.print(now);
+        Serial.print(" ms] WIFI_AP_SELECTION_DISCONNECT bssid=");
+        Serial.print(WiFi.BSSIDstr());
+        Serial.print(" rssi="); Serial.print(WiFi.RSSI());
+        Serial.println(" dBm");
+        WiFi.disconnect(false, false);
+        _connectionStarted = false;
+    }
+
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SCAN_WAIT settleMs=");
+    Serial.println(WIFI_AP_SCAN_SETTLE_MS);
+}
+
+void NetworkManager::updateAccessPointSelection(unsigned long now)
+{
+    if (_apScanSettlePending) {
+        if (now - _apScanSettleStartedMs < WIFI_AP_SCAN_SETTLE_MS) return;
+        _apScanSettlePending = false;
+        startAccessPointScan(now);
+        return;
+    }
+
+    if (_apScanActive) {
+        const int16_t scanResult = WiFi.scanComplete();
+        if (scanResult == WIFI_SCAN_RUNNING) return;
+
+        _apScanActive = false;
+        if (scanResult == WIFI_SCAN_FAILED) {
+            handleAccessPointScanFailure(now, "WIFI_AP_SCAN_FAILED");
+            return;
+        }
+
+        finishAccessPointScan(scanResult, now);
+        return;
+    }
+
+    if (_apScanRetryPending) {
+        if (now - _apScanRetryRequestedMs < WIFI_AP_SCAN_RETRY_DELAY_MS) return;
+        _apScanRetryPending = false;
+        startAccessPointScan(now);
+    }
+}
+
+void NetworkManager::startAccessPointScan(unsigned long now)
+{
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SCAN_STARTED reason=");
+    Serial.print(_apSelectionReason);
+    Serial.print(" attempt=");
+    Serial.println(_apScanFailureCount + 1);
+
+    // The scan deliberately runs while not associated with an AP. Earlier field
+    // tests showed that scans started on an active weak connection repeatedly
+    // timed out after about six seconds on this Arduino-ESP32 version.
+    const int16_t scanResult = WiFi.scanNetworks(true);
+    if (scanResult == WIFI_SCAN_RUNNING) {
+        _apScanActive = true;
+        return;
+    }
+
+    if (scanResult == WIFI_SCAN_FAILED) {
+        handleAccessPointScanFailure(now, "WIFI_AP_SCAN_FAILED_TO_START");
+        return;
+    }
+
+    finishAccessPointScan(scanResult, now);
+}
+
+void NetworkManager::finishAccessPointScan(
+    int16_t networkCount,
+    unsigned long now
+)
+{
+    bool foundTarget = false;
+    int32_t bestRssi = -127;
+    int32_t bestChannel = 0;
+    uint8_t bestBssid[6] = {0};
+    uint16_t targetCount = 0;
+
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SCAN_COMPLETE networks=");
+    Serial.println(networkCount);
+
+    for (int16_t i = 0; i < networkCount; ++i) {
+        if (WiFi.SSID(i) != _credentials.ssid) continue;
+
+        uint8_t* candidateBssid = WiFi.BSSID(i);
+        if (!candidateBssid) continue;
+
+        ++targetCount;
+        const int32_t candidateRssi = WiFi.RSSI(i);
+        const int32_t candidateChannel = WiFi.channel(i);
+
+        Serial.print('['); Serial.print(now);
+        Serial.print(" ms] WIFI_AP_CANDIDATE ssid=");
+        Serial.print(_credentials.ssid);
+        Serial.print(" bssid="); printBssid(candidateBssid);
+        Serial.print(" channel="); Serial.print(candidateChannel);
+        Serial.print(" rssi="); Serial.print(candidateRssi);
+        Serial.println(" dBm");
+
+        if (!foundTarget || candidateRssi > bestRssi) {
+            foundTarget = true;
+            bestRssi = candidateRssi;
+            bestChannel = candidateChannel;
+            std::memcpy(bestBssid, candidateBssid, sizeof(bestBssid));
+        }
+    }
+
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SCAN_TARGET_MATCHES count=");
+    Serial.println(targetCount);
+
+    if (!foundTarget) {
+        handleAccessPointScanFailure(now, "WIFI_AP_SELECTION_NO_MATCH");
+        return;
+    }
+
+    WiFi.scanDelete();
+
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SELECTED ssid=");
+    Serial.print(_credentials.ssid);
+    Serial.print(" bssid="); printBssid(bestBssid);
+    Serial.print(" channel="); Serial.print(bestChannel);
+    Serial.print(" rssi="); Serial.print(bestRssi);
+    Serial.println(" dBm");
+
+    _apSelectionActive = false;
+    _apScanSettlePending = false;
+    _apScanActive = false;
+    _apScanRetryPending = false;
+    _apScanFailureCount = 0;
+
+    connectToAccessPoint(bestChannel, bestBssid, bestRssi);
+}
+
+void NetworkManager::handleAccessPointScanFailure(
+    unsigned long now,
+    const char* eventName
+)
+{
+    WiFi.scanDelete();
+    if (_apScanFailureCount < 255) ++_apScanFailureCount;
+
+    Serial.print('['); Serial.print(now); Serial.print(" ms] ");
+    Serial.print(eventName);
+    Serial.print(" failure=");
+    Serial.println(_apScanFailureCount);
+
+    if (_apScanFailureCount < WIFI_AP_SCAN_MAX_FAILURES) {
+        _apScanRetryPending = true;
+        _apScanRetryRequestedMs = now;
+        Serial.print('['); Serial.print(now);
+        Serial.print(" ms] WIFI_AP_SCAN_RETRY_SCHEDULED delay=");
+        Serial.print(WIFI_AP_SCAN_RETRY_DELAY_MS);
+        Serial.print(" ms nextAttempt=");
+        Serial.println(_apScanFailureCount + 1);
+        return;
+    }
+
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_AP_SCAN_GIVE_UP failures=");
+    Serial.print(_apScanFailureCount);
+    Serial.println(" fallback=automatic");
+
+    _apSelectionActive = false;
+    _apScanSettlePending = false;
+    _apScanActive = false;
+    _apScanRetryPending = false;
+    _apScanFailureCount = 0;
+
+    connectAutomatically("scan_failure_fallback");
 }
 
 void NetworkManager::connectToAccessPoint(
@@ -184,22 +384,18 @@ void NetworkManager::connectToAccessPoint(
 )
 {
     const unsigned long now = millis();
-    configureAccessPointSelection();
 
     Serial.print('['); Serial.print(now);
-    Serial.print(" ms] WIFI_ROAM_CONNECT bssid=");
-    printBssid(bssid);
+    Serial.print(" ms] WIFI_CONNECT_SELECTED ssid=");
+    Serial.print(_credentials.ssid);
+    Serial.print(" bssid="); printBssid(bssid);
     Serial.print(" channel="); Serial.print(channel);
-    Serial.print(" targetRssi="); Serial.print(targetRssi);
+    Serial.print(" scanRssi="); Serial.print(targetRssi);
     Serial.println(" dBm");
 
     _lastConnectionAttempt = now;
     _connectionStarted = true;
 
-    // A deliberate disconnect uses ASSOC_LEAVE, so auto-reconnect does not race
-    // the targeted BSSID connection. Supplying channel + BSSID avoids another
-    // broad AP selection round for this roaming handoff.
-    WiFi.disconnect(false, false);
     WiFi.begin(
         _credentials.ssid.c_str(),
         _credentials.password.c_str(),
@@ -209,208 +405,35 @@ void NetworkManager::connectToAccessPoint(
     );
 }
 
-void NetworkManager::updateRoaming(unsigned long now)
+void NetworkManager::connectAutomatically(const char* reason)
 {
-    if (_roamScanActive) {
-        const int16_t scanResult = WiFi.scanComplete();
-        if (scanResult == WIFI_SCAN_RUNNING) return;
-
-        _roamScanActive = false;
-        if (scanResult == WIFI_SCAN_FAILED) {
-            handleRoamingScanFailure(now, "WIFI_ROAM_SCAN_FAILED");
-            return;
-        }
-
-        finishRoamingScan(scanResult, now);
-        return;
-    }
-
-    if (_roamSettlePending) {
-        if (now - _roamSettleStartedMs < WIFI_ROAM_CONNECTION_SETTLE_MS) return;
-
-        _roamSettlePending = false;
-        const int32_t currentRssi = WiFi.RSSI();
-        if (currentRssi > WIFI_ROAM_RSSI_THRESHOLD_DBM) {
-            _lastRoamCheckMs = now;
-            _roamScanFailureCount = 0;
-            Serial.print('['); Serial.print(now);
-            Serial.print(" ms] WIFI_ROAM_WAIT_COMPLETE reason=signal_recovered rssi=");
-            Serial.print(currentRssi); Serial.println(" dBm");
-            return;
-        }
-
-        startRoamingScan(now, currentRssi);
-        return;
-    }
-
-    if (_roamRetryPending) {
-        if (now - _roamRetryRequestedMs < WIFI_ROAM_SCAN_RETRY_DELAY_MS) return;
-
-        _roamRetryPending = false;
-        const int32_t currentRssi = WiFi.RSSI();
-        if (currentRssi > WIFI_ROAM_RSSI_THRESHOLD_DBM) {
-            _lastRoamCheckMs = now;
-            _roamScanFailureCount = 0;
-            Serial.print('['); Serial.print(now);
-            Serial.print(" ms] WIFI_ROAM_SCAN_RETRY_SKIPPED reason=signal_recovered rssi=");
-            Serial.print(currentRssi); Serial.println(" dBm");
-            return;
-        }
-
-        startRoamingScan(now, currentRssi);
-        return;
-    }
-
-    const int32_t currentRssi = WiFi.RSSI();
-    if (currentRssi > WIFI_ROAM_RSSI_THRESHOLD_DBM) return;
-
-    if (
-        _lastRoamCheckMs != 0 &&
-        now - _lastRoamCheckMs < WIFI_ROAM_CHECK_INTERVAL_MS
-    ) {
-        return;
-    }
-
-    startRoamingScan(now, currentRssi);
-}
-
-void NetworkManager::startRoamingScan(unsigned long now, int32_t currentRssi)
-{
-    _lastRoamCheckMs = now;
+    const unsigned long now = millis();
+    configureFallbackAccessPointSelection();
 
     Serial.print('['); Serial.print(now);
-    Serial.print(" ms] WIFI_ROAM_SCAN_STARTED currentBssid=");
-    Serial.print(WiFi.BSSIDstr());
-    Serial.print(" currentRssi="); Serial.print(currentRssi);
-    Serial.print(" dBm attempt=");
-    Serial.println(_roamScanFailureCount + 1);
+    Serial.print(" ms] WIFI_CONNECT_FALLBACK reason=");
+    Serial.print(reason == nullptr ? "unknown" : reason);
+    Serial.print(" ssid="); Serial.println(_credentials.ssid);
 
-    // Async scan keeps the main loop cooperative while checking all APs.
-    const int16_t scanResult = WiFi.scanNetworks(true);
-    if (scanResult == WIFI_SCAN_RUNNING) {
-        _roamScanActive = true;
-        return;
-    }
-
-    if (scanResult == WIFI_SCAN_FAILED) {
-        handleRoamingScanFailure(now, "WIFI_ROAM_SCAN_FAILED_TO_START");
-        return;
-    }
-
-    // Normally async scanning reports WIFI_SCAN_RUNNING, but handle an
-    // immediately available result defensively as well.
-    finishRoamingScan(scanResult, now);
+    _lastConnectionAttempt = now;
+    _connectionStarted = true;
+    WiFi.begin(_credentials.ssid.c_str(), _credentials.password.c_str());
 }
 
-void NetworkManager::finishRoamingScan(int16_t networkCount, unsigned long now)
+void NetworkManager::cancelAccessPointSelection()
 {
-    _roamScanFailureCount = 0;
-    _roamRetryPending = false;
+    const bool hadSelectionWork = _apSelectionActive;
+    if (_apScanActive) WiFi.scanDelete();
 
-    uint8_t currentBssid[6] = {0};
-    const uint8_t* connectedBssid = WiFi.BSSID();
-    if (connectedBssid) {
-        std::memcpy(currentBssid, connectedBssid, sizeof(currentBssid));
-    }
-    const int32_t currentRssi = WiFi.RSSI();
+    _apSelectionActive = false;
+    _apScanSettlePending = false;
+    _apScanActive = false;
+    _apScanRetryPending = false;
+    _apScanFailureCount = 0;
+    _apSelectionReason = "";
 
-    bool foundAlternative = false;
-    int32_t bestRssi = -127;
-    int32_t bestChannel = 0;
-    uint8_t bestBssid[6] = {0};
-
-    for (int16_t i = 0; i < networkCount; ++i) {
-        if (WiFi.SSID(i) != _credentials.ssid) continue;
-
-        uint8_t* candidateBssid = WiFi.BSSID(i);
-        if (!candidateBssid) continue;
-        if (std::memcmp(candidateBssid, currentBssid, sizeof(currentBssid)) == 0) continue;
-
-        const int32_t candidateRssi = WiFi.RSSI(i);
-        if (!foundAlternative || candidateRssi > bestRssi) {
-            foundAlternative = true;
-            bestRssi = candidateRssi;
-            bestChannel = WiFi.channel(i);
-            std::memcpy(bestBssid, candidateBssid, sizeof(bestBssid));
-        }
-    }
-
-    WiFi.scanDelete();
-
-    if (!foundAlternative) {
-        Serial.print('['); Serial.print(now);
-        Serial.print(" ms] WIFI_ROAM_STAY reason=no_alternative currentRssi=");
-        Serial.print(currentRssi); Serial.println(" dBm");
-        return;
-    }
-
-    const int32_t improvement = bestRssi - currentRssi;
-    if (improvement < WIFI_ROAM_MIN_IMPROVEMENT_DB) {
-        Serial.print('['); Serial.print(now);
-        Serial.print(" ms] WIFI_ROAM_STAY currentRssi=");
-        Serial.print(currentRssi);
-        Serial.print(" bestAlternativeRssi="); Serial.print(bestRssi);
-        Serial.print(" improvement="); Serial.print(improvement);
-        Serial.println(" dB");
-        return;
-    }
-
-    Serial.print('['); Serial.print(now);
-    Serial.print(" ms] WIFI_ROAM_SWITCH fromBssid=");
-    printBssid(currentBssid);
-    Serial.print(" fromRssi="); Serial.print(currentRssi);
-    Serial.print(" toBssid="); printBssid(bestBssid);
-    Serial.print(" toRssi="); Serial.print(bestRssi);
-    Serial.print(" channel="); Serial.print(bestChannel);
-    Serial.print(" improvement="); Serial.print(improvement);
-    Serial.println(" dB");
-
-    connectToAccessPoint(bestChannel, bestBssid, bestRssi);
-}
-
-void NetworkManager::handleRoamingScanFailure(
-    unsigned long now,
-    const char* eventName
-)
-{
-    WiFi.scanDelete();
-    if (_roamScanFailureCount < 255) ++_roamScanFailureCount;
-
-    Serial.print('['); Serial.print(now); Serial.print(" ms] ");
-    Serial.print(eventName);
-    Serial.print(" failure=");
-    Serial.println(_roamScanFailureCount);
-
-    if (_roamScanFailureCount < WIFI_ROAM_MAX_SCAN_FAILURES) {
-        _roamRetryPending = true;
-        _roamRetryRequestedMs = now;
-        Serial.print('['); Serial.print(now);
-        Serial.print(" ms] WIFI_ROAM_SCAN_RETRY_SCHEDULED delay=");
-        Serial.print(WIFI_ROAM_SCAN_RETRY_DELAY_MS);
-        Serial.print(" ms nextAttempt=");
-        Serial.println(_roamScanFailureCount + 1);
-        return;
-    }
-
-    _roamRetryPending = false;
-    Serial.print('['); Serial.print(now);
-    Serial.print(" ms] WIFI_ROAM_SCAN_GIVE_UP failures=");
-    Serial.println(_roamScanFailureCount);
-    _roamScanFailureCount = 0;
-}
-
-void NetworkManager::cancelRoamingScan()
-{
-    const bool hadRoamingWork = isRoaming();
-    if (_roamScanActive) WiFi.scanDelete();
-
-    _roamScanActive = false;
-    _roamSettlePending = false;
-    _roamRetryPending = false;
-    _roamScanFailureCount = 0;
-
-    if (hadRoamingWork) {
-        Serial.println("NetworkManager: roaming work cancelled.");
+    if (hadSelectionWork) {
+        Serial.println("NetworkManager: access point selection cancelled.");
     }
 }
 
