@@ -17,7 +17,10 @@ pio device monitor -b 115200
 
 ## Pinbelegung
 
-Die Belegung verwendet die Arduino-Nano-Pinlabels. In der ESP32-S3-Zuordnung des Nano ESP32 sind dies:
+Die Belegung verwendet die standardmäßige **Arduino-Pinnummerierung** des Nano
+ESP32. Die an `pinMode()` und `digitalWrite()` übergebenen Werte sind daher die
+D-Pinnummern, nicht die rohen ESP32-GPIO-Nummern. In der ESP32-S3-Zuordnung des
+Nano ESP32 sind dies:
 
 | Funktion | Nano-Pin | ESP32-S3 GPIO | Hinweise |
 |---|---:|---:|---|
@@ -43,7 +46,7 @@ Ohne gespeicherte Zugangsdaten startet `FERM-01-Setup` als SoftAP mit dem besteh
 
 ## Persistenz
 
-`FlashStorage` verwendet `Preferences` und damit den nativen ESP32-NVS-Namespace `fermsensor`. Strings und Binärrecords werden unter stabil abgeleiteten, NVS-kompatiblen Schlüsseln abgelegt. Factory Reset löscht ausschließlich diesen Namespace. Es gibt keine Migration von früheren Geräten.
+`FlashStorage` verwendet `Preferences` und damit den nativen ESP32-NVS-Namespace `fermsensor`. Kurze fachliche Schlüssel bleiben lesbar; die drei zu langen Schlüssel werden explizit und kollisionsfrei auf dokumentierte NVS-Schlüssel abgebildet. Factory Reset löscht ausschließlich diesen Namespace. Es gibt keine Migration von früheren Geräten.
 
 Die beim ersten Boot erzeugte UUID v4 wird im `device_config`-Record gespeichert und danach wieder geladen; die MAC-Adresse ist nicht die Geräte-ID. Der Measurement-Sequence-Allocator reserviert weiterhin einen kompletten Block dauerhaft **vor** dessen erster Verwendung. Dadurch überspringt ein Neustart den zuletzt reservierten Bereich und gibt keine möglicherweise bereits verwendete Sequence erneut aus.
 

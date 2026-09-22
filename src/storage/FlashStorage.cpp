@@ -1,27 +1,25 @@
 #include "storage/FlashStorage.h"
 
+#include <cstring>
+
 namespace
 {
 constexpr char NVS_NAMESPACE[] = "fermsensor";
 constexpr const char* APPLICATION_KEYS[] = {
     "device_config", "wifi_config", "temperature_config", "gateway_cache",
-    "measurement_sequence_v1", "sensor_config_v1", "wifi_ssid",
-    "wifi_password", "device_uuid", "device_name", "server_config"
+    "measurement_sequence_v1", "sensor_config_v1"
 };
 }
 
 String FlashStorage::nvsKey(const char* key) const
 {
-    // Preferences keys are limited to 15 characters. A stable FNV-1a-derived
-    // key keeps the public storage interface and its descriptive keys intact.
-    uint32_t hash = 2166136261UL;
-    for (const uint8_t* p = reinterpret_cast<const uint8_t*>(key); *p; ++p) {
-        hash ^= *p;
-        hash *= 16777619UL;
-    }
-    char encoded[10] = {};
-    snprintf(encoded, sizeof(encoded), "k%08lx", static_cast<unsigned long>(hash));
-    return String(encoded);
+    if (!key) return String();
+    if (strcmp(key, "temperature_config") == 0) return "temp_config_v1";
+    if (strcmp(key, "measurement_sequence_v1") == 0) return "measure_seq_v1";
+    if (strcmp(key, "sensor_config_v1") == 0) return "sensor_cfg_v1";
+    // NVS accepts at most 15 characters. Short application keys remain
+    // readable in NVS; unknown oversized keys are rejected without collision.
+    return strlen(key) <= 15 ? String(key) : String();
 }
 
 bool FlashStorage::begin()
@@ -37,6 +35,7 @@ bool FlashStorage::setString(const char* key, const String& value)
 {
     if (!_ready || !key) return false;
     const String storedKey = nvsKey(key);
+    if (storedKey.isEmpty()) return false;
     return _preferences.putString(storedKey.c_str(), value) == value.length();
 }
 
@@ -50,13 +49,16 @@ bool FlashStorage::getString(const char* key, String& value)
 bool FlashStorage::setBytes(const char* key, const void* data, size_t size)
 {
     if (!_ready || !key || !data || size == 0) return false;
-    return _preferences.putBytes(nvsKey(key).c_str(), data, size) == size;
+    const String storedKey = nvsKey(key);
+    if (storedKey.isEmpty()) return false;
+    return _preferences.putBytes(storedKey.c_str(), data, size) == size;
 }
 
 bool FlashStorage::getBytes(const char* key, void* data, size_t size)
 {
     if (!_ready || !key || !data || size == 0) return false;
     const String storedKey = nvsKey(key);
+    if (storedKey.isEmpty()) return false;
     if (_preferences.getBytesLength(storedKey.c_str()) != size) return false;
     return _preferences.getBytes(storedKey.c_str(), data, size) == size;
 }
@@ -64,12 +66,15 @@ bool FlashStorage::getBytes(const char* key, void* data, size_t size)
 bool FlashStorage::remove(const char* key)
 {
     if (!_ready || !key) return false;
-    return !exists(key) || _preferences.remove(nvsKey(key).c_str());
+    const String storedKey = nvsKey(key);
+    return !storedKey.isEmpty() && (!exists(key) || _preferences.remove(storedKey.c_str()));
 }
 
 bool FlashStorage::exists(const char* key)
 {
-    return _ready && key && _preferences.isKey(nvsKey(key).c_str());
+    if (!_ready || !key) return false;
+    const String storedKey = nvsKey(key);
+    return !storedKey.isEmpty() && _preferences.isKey(storedKey.c_str());
 }
 
 bool FlashStorage::clearAll() { return factoryReset(); }
@@ -88,10 +93,7 @@ bool FlashStorage::resetForMaintenance()
 
 bool FlashStorage::clearWifi()
 {
-    for (const char* key : {"wifi_config", "wifi_ssid", "wifi_password"}) {
-        if (exists(key) && !remove(key)) return false;
-    }
-    return true;
+    return !exists("wifi_config") || remove("wifi_config");
 }
 
 void FlashStorage::debugPrintAll()
