@@ -7,6 +7,9 @@ WifiSetupPortal::WifiSetupPortal(WifiCredentialStore& credentialStore)
 
 void WifiSetupPortal::begin()
 {
+    _restartPending = false;
+    _restartScheduledMs = 0;
+
     Serial.println("WifiSetupPortal: starting access point...");
     WiFi.mode(WIFI_AP);
     if (!WiFi.softAP("FERM-01-Setup")) {
@@ -25,6 +28,17 @@ void WifiSetupPortal::begin()
 void WifiSetupPortal::update()
 {
     if (!_active) return;
+
+    if (_restartPending) {
+        if (millis() - _restartScheduledMs >= RESTART_DELAY_MS) {
+            Serial.println(
+                "WifiSetupPortal: restarting with stored WiFi credentials..."
+            );
+            ESP.restart();
+        }
+
+        return;
+    }
 
     if (!_clientActive) {
         _client = _server.available();
@@ -92,6 +106,13 @@ void WifiSetupPortal::handleClient(WiFiClient& client)
                     Serial.print("WifiSetupPortal: credentials stored for ");
                     Serial.println(credentials.ssid);
                     sendSuccessPage(client);
+
+                    // Keep the setup AP alive just long enough for the browser to
+                    // receive the success response. The next normal boot will load
+                    // the stored credentials and initialize the complete station /
+                    // gateway / WebSocket path through the existing startup flow.
+                    _restartScheduledMs = millis();
+                    _restartPending = true;
                 }
                 else {
                     Serial.println("WifiSetupPortal: failed to store credentials.");
@@ -275,7 +296,9 @@ void WifiSetupPortal::sendSuccessPage(WiFiClient& client)
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         "<title>WLAN gespeichert</title></head><body><h1>WLAN gespeichert</h1>"
-        "<p>Die WLAN-Zugangsdaten wurden gespeichert.</p></body></html>"
+        "<p>Die WLAN-Zugangsdaten wurden gespeichert.</p>"
+        "<p>Der Sensor startet neu und verbindet sich anschließend mit dem WLAN.</p>"
+        "</body></html>"
     );
 }
 
