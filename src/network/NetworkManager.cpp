@@ -69,18 +69,17 @@ void NetworkManager::begin(const WifiCredentials& credentials)
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
     WiFi.persistent(false);
-    configureFallbackAccessPointSelection();
 
     if (!_credentials.isValid()) {
         Serial.println("NetworkManager: no valid WiFi credentials.");
         return;
     }
 
-    Serial.println("NetworkManager: access point selection=pre-connect scan + targeted BSSID");
+    Serial.println("NetworkManager: access point selection=pre-connect synchronous scan + targeted BSSID");
     Serial.println("NetworkManager: fallback access point selection=all-channel strongest-signal");
     Serial.print("NetworkManager: roaming threshold=");
     Serial.print(WIFI_ROAM_RSSI_THRESHOLD_DBM);
-    Serial.print(" dBm scanSettleMs=");
+    Serial.print(" dBm scanMode=synchronous scanSettleMs=");
     Serial.print(WIFI_AP_SCAN_SETTLE_MS);
     Serial.print(" retryDelayMs=");
     Serial.print(WIFI_AP_SCAN_RETRY_DELAY_MS);
@@ -109,7 +108,6 @@ void NetworkManager::update()
         _restartPending = false;
         WiFi.mode(WIFI_STA);
         WiFi.setAutoReconnect(false);
-        configureFallbackAccessPointSelection();
         scheduleAccessPointSelection(now, "controlled_reset", false);
         return;
     }
@@ -187,7 +185,6 @@ void NetworkManager::scheduleAccessPointSelection(
     _apSelectionActive = true;
     _apScanSettlePending = true;
     _apScanSettleStartedMs = now;
-    _apScanActive = false;
     _apScanRetryPending = false;
     _apScanRetryRequestedMs = 0;
     _apScanFailureCount = 0;
@@ -206,9 +203,12 @@ void NetworkManager::scheduleAccessPointSelection(
         Serial.print(WiFi.BSSIDstr());
         Serial.print(" rssi="); Serial.print(WiFi.RSSI());
         Serial.println(" dBm");
-        WiFi.disconnect(false, false);
-        _connectionStarted = false;
     }
+
+    // Always stop any association/connection attempt before scanning. This also
+    // makes reconnect and weak-signal selection use the same known radio state.
+    WiFi.disconnect(false, false);
+    _connectionStarted = false;
 
     Serial.print('['); Serial.print(now);
     Serial.print(" ms] WIFI_AP_SCAN_WAIT settleMs=");
@@ -221,20 +221,6 @@ void NetworkManager::updateAccessPointSelection(unsigned long now)
         if (now - _apScanSettleStartedMs < WIFI_AP_SCAN_SETTLE_MS) return;
         _apScanSettlePending = false;
         startAccessPointScan(now);
-        return;
-    }
-
-    if (_apScanActive) {
-        const int16_t scanResult = WiFi.scanComplete();
-        if (scanResult == WIFI_SCAN_RUNNING) return;
-
-        _apScanActive = false;
-        if (scanResult == WIFI_SCAN_FAILED) {
-            handleAccessPointScanFailure(now, "WIFI_AP_SCAN_FAILED");
-            return;
-        }
-
-        finishAccessPointScan(scanResult, now);
         return;
     }
 
@@ -251,23 +237,31 @@ void NetworkManager::startAccessPointScan(unsigned long now)
     Serial.print(" ms] WIFI_AP_SCAN_STARTED reason=");
     Serial.print(_apSelectionReason);
     Serial.print(" attempt=");
-    Serial.println(_apScanFailureCount + 1);
+    Serial.print(_apScanFailureCount + 1);
+    Serial.println(" mode=synchronous");
 
-    // The scan deliberately runs while not associated with an AP. Earlier field
-    // tests showed that scans started on an active weak connection repeatedly
-    // timed out after about six seconds on this Arduino-ESP32 version.
-    const int16_t scanResult = WiFi.scanNetworks(true);
-    if (scanResult == WIFI_SCAN_RUNNING) {
-        _apScanActive = true;
+    WiFi.scanDelete();
+    const unsigned long scanStartedMs = millis();
+
+    // Diagnostic mode: block until the scan is finished so we can distinguish
+    // an async scan lifecycle problem from a real radio/scan failure. The second
+    // argument includes hidden SSIDs; matching candidates are still filtered by
+    // the configured SSID below.
+    const int16_t scanResult = WiFi.scanNetworks(false, true);
+    const unsigned long scanFinishedMs = millis();
+
+    Serial.print('['); Serial.print(scanFinishedMs);
+    Serial.print(" ms] WIFI_AP_SCAN_RESULT result=");
+    Serial.print(scanResult);
+    Serial.print(" durationMs=");
+    Serial.println(scanFinishedMs - scanStartedMs);
+
+    if (scanResult < 0) {
+        handleAccessPointScanFailure(scanFinishedMs, "WIFI_AP_SCAN_FAILED");
         return;
     }
 
-    if (scanResult == WIFI_SCAN_FAILED) {
-        handleAccessPointScanFailure(now, "WIFI_AP_SCAN_FAILED_TO_START");
-        return;
-    }
-
-    finishAccessPointScan(scanResult, now);
+    finishAccessPointScan(scanResult, scanFinishedMs);
 }
 
 void NetworkManager::finishAccessPointScan(
@@ -296,8 +290,8 @@ void NetworkManager::finishAccessPointScan(
         const int32_t candidateChannel = WiFi.channel(i);
 
         Serial.print('['); Serial.print(now);
-        Serial.print(" ms] WIFI_AP_CANDIDATE ssid=");
-        Serial.print(_credentials.ssid);
+        Serial.print(" ms] WIFI_AP_CANDIDATE index="); Serial.print(i);
+        Serial.print(" ssid="); Serial.print(_credentials.ssid);
         Serial.print(" bssid="); printBssid(candidateBssid);
         Serial.print(" channel="); Serial.print(candidateChannel);
         Serial.print(" rssi="); Serial.print(candidateRssi);
@@ -332,7 +326,6 @@ void NetworkManager::finishAccessPointScan(
 
     _apSelectionActive = false;
     _apScanSettlePending = false;
-    _apScanActive = false;
     _apScanRetryPending = false;
     _apScanFailureCount = 0;
 
@@ -370,7 +363,6 @@ void NetworkManager::handleAccessPointScanFailure(
 
     _apSelectionActive = false;
     _apScanSettlePending = false;
-    _apScanActive = false;
     _apScanRetryPending = false;
     _apScanFailureCount = 0;
 
@@ -423,11 +415,10 @@ void NetworkManager::connectAutomatically(const char* reason)
 void NetworkManager::cancelAccessPointSelection()
 {
     const bool hadSelectionWork = _apSelectionActive;
-    if (_apScanActive) WiFi.scanDelete();
+    WiFi.scanDelete();
 
     _apSelectionActive = false;
     _apScanSettlePending = false;
-    _apScanActive = false;
     _apScanRetryPending = false;
     _apScanFailureCount = 0;
     _apSelectionReason = "";

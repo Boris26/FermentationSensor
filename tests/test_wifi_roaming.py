@@ -11,20 +11,28 @@ class WifiRoamingTests(unittest.TestCase):
     def test_initial_connection_scans_before_connecting(self):
         begin = NETWORK[NETWORK.index("void NetworkManager::begin") :]
         self.assertIn("scheduleAccessPointSelection(millis(), \"initial\", false)", begin)
-        self.assertIn("access point selection=pre-connect scan + targeted BSSID", NETWORK)
+        self.assertIn("access point selection=pre-connect synchronous scan + targeted BSSID", NETWORK)
         self.assertNotIn("WiFi.begin(_credentials.ssid.c_str(), _credentials.password.c_str());\n}", begin[:begin.index("void NetworkManager::update")])
 
-    def test_scan_is_async_and_runs_after_a_short_disconnected_settle(self):
+    def test_scan_is_synchronous_and_runs_after_a_short_disconnected_settle(self):
         self.assertIn("WIFI_AP_SCAN_SETTLE_MS = 500", NETWORK)
-        self.assertIn("WiFi.scanNetworks(true)", NETWORK)
-        self.assertIn("WiFi.scanComplete()", NETWORK)
-        self.assertIn("WIFI_SCAN_RUNNING", NETWORK)
-        self.assertIn("_apScanActive", HEADER)
+        self.assertIn("WiFi.scanNetworks(false, true)", NETWORK)
+        self.assertNotIn("WiFi.scanComplete()", NETWORK)
+        self.assertNotIn("WIFI_SCAN_RUNNING", NETWORK)
+        self.assertNotIn("_apScanActive", HEADER)
         self.assertIn("WIFI_AP_SCAN_WAIT settleMs=", NETWORK)
+        self.assertIn("mode=synchronous", NETWORK)
+        self.assertIn("WIFI_AP_SCAN_RESULT result=", NETWORK)
+        self.assertIn("durationMs=", NETWORK)
+
+    def test_scan_starts_from_a_known_disconnected_state(self):
+        selection = NETWORK[NETWORK.index("void NetworkManager::scheduleAccessPointSelection") :]
+        self.assertIn("WiFi.disconnect(false, false);", selection)
+        self.assertIn("_connectionStarted = false;", selection)
 
     def test_all_matching_ssid_candidates_are_logged(self):
         self.assertIn("WiFi.SSID(i) != _credentials.ssid", NETWORK)
-        self.assertIn("WIFI_AP_CANDIDATE ssid=", NETWORK)
+        self.assertIn("WIFI_AP_CANDIDATE index=", NETWORK)
         self.assertIn("WIFI_AP_SCAN_TARGET_MATCHES count=", NETWORK)
         self.assertIn("WIFI_AP_SELECTED ssid=", NETWORK)
         self.assertIn("candidateRssi > bestRssi", NETWORK)
@@ -42,7 +50,6 @@ class WifiRoamingTests(unittest.TestCase):
         self.assertIn("WIFI_ROAM_CHECK_INTERVAL_MS = 60000", NETWORK)
         self.assertIn("scheduleAccessPointSelection(now, \"weak_signal\", true)", NETWORK)
         self.assertIn("WIFI_AP_SELECTION_DISCONNECT", NETWORK)
-        self.assertIn("WiFi.disconnect(false, false)", NETWORK)
         self.assertIn("bool isRoaming() const { return _apSelectionActive; }", HEADER)
 
     def test_scan_failure_retries_then_uses_last_resort_automatic_connect(self):

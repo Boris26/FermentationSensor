@@ -48,7 +48,6 @@ private:
     bool _apSelectionActive = false;
     bool _apScanSettlePending = false;
     unsigned long _apScanSettleStartedMs = 0;
-    bool _apScanActive = false;
     bool _apScanRetryPending = false;
     unsigned long _apScanRetryRequestedMs = 0;
     uint8_t _apScanFailureCount = 0;
