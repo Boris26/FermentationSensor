@@ -11,6 +11,7 @@ public:
     void update();
 
     bool isConnected() const;
+    bool isRoaming() const { return _roamScanActive; }
     void requestReconnect(const char* reason);
 
 private:
