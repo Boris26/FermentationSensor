@@ -15,11 +15,27 @@ class WifiRoamingTests(unittest.TestCase):
         self.assertIn("currentRssi > WIFI_ROAM_RSSI_THRESHOLD_DBM", NETWORK)
         self.assertIn("now - _lastRoamCheckMs < WIFI_ROAM_CHECK_INTERVAL_MS", NETWORK)
 
+    def test_initial_weak_connection_waits_before_scanning(self):
+        self.assertIn("WIFI_ROAM_CONNECTION_SETTLE_MS = 2000", NETWORK)
+        self.assertIn("WIFI_ROAM_WAIT currentRssi=", NETWORK)
+        self.assertIn("_roamSettlePending", HEADER)
+        self.assertIn("now - _roamSettleStartedMs < WIFI_ROAM_CONNECTION_SETTLE_MS", NETWORK)
+        self.assertIn("_roamSettlePending", HEADER)
+        self.assertIn("_roamSettlePending || _roamRetryPending", HEADER)
+
     def test_roaming_scan_is_async(self):
         self.assertIn("WiFi.scanNetworks(true)", NETWORK)
         self.assertIn("WiFi.scanComplete()", NETWORK)
         self.assertIn("WIFI_SCAN_RUNNING", NETWORK)
         self.assertIn("_roamScanActive", HEADER)
+
+    def test_failed_scan_gets_one_delayed_retry(self):
+        self.assertIn("WIFI_ROAM_SCAN_RETRY_DELAY_MS = 1500", NETWORK)
+        self.assertIn("WIFI_ROAM_MAX_SCAN_FAILURES = 2", NETWORK)
+        self.assertIn("WIFI_ROAM_SCAN_RETRY_SCHEDULED", NETWORK)
+        self.assertIn("WIFI_ROAM_SCAN_GIVE_UP", NETWORK)
+        self.assertIn("_roamRetryPending", HEADER)
+        self.assertIn("handleRoamingScanFailure", NETWORK)
 
     def test_roaming_uses_same_ssid_and_requires_a_better_bssid(self):
         self.assertIn("WiFi.SSID(i) != _credentials.ssid", NETWORK)

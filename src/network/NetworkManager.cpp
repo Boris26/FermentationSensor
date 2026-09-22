@@ -9,6 +9,9 @@ constexpr unsigned long CONNECTION_RETRY_INTERVAL_MS = 10000;
 constexpr unsigned long WIFI_RESTART_SETTLE_MS = 1000;
 constexpr unsigned long WIFI_RSSI_LOG_INTERVAL_MS = 30000;
 constexpr unsigned long WIFI_ROAM_CHECK_INTERVAL_MS = 60000;
+constexpr unsigned long WIFI_ROAM_CONNECTION_SETTLE_MS = 2000;
+constexpr unsigned long WIFI_ROAM_SCAN_RETRY_DELAY_MS = 1500;
+constexpr uint8_t WIFI_ROAM_MAX_SCAN_FAILURES = 2;
 constexpr int32_t WIFI_ROAM_RSSI_THRESHOLD_DBM = -70;
 constexpr int32_t WIFI_ROAM_MIN_IMPROVEMENT_DB = 10;
 
@@ -79,7 +82,11 @@ void NetworkManager::begin(const WifiCredentials& credentials)
     Serial.print(WIFI_ROAM_RSSI_THRESHOLD_DBM);
     Serial.print(" dBm minimumImprovement=");
     Serial.print(WIFI_ROAM_MIN_IMPROVEMENT_DB);
-    Serial.print(" dB checkIntervalMs=");
+    Serial.print(" dB settleMs=");
+    Serial.print(WIFI_ROAM_CONNECTION_SETTLE_MS);
+    Serial.print(" retryDelayMs=");
+    Serial.print(WIFI_ROAM_SCAN_RETRY_DELAY_MS);
+    Serial.print(" checkIntervalMs=");
     Serial.println(WIFI_ROAM_CHECK_INTERVAL_MS);
     connect();
 }
@@ -95,7 +102,7 @@ void NetworkManager::update()
     }
     if (!_credentials.isValid()) return;
 
-    if (_roamScanActive && status != WL_CONNECTED) {
+    if (status != WL_CONNECTED && isRoaming()) {
         cancelRoamingScan();
     }
 
@@ -113,6 +120,19 @@ void NetworkManager::update()
             Serial.print('['); Serial.print(now); Serial.println(" ms] WIFI_CONNECTED");
             printNetworkDiagnostics();
             _lastRssiLogMs = now;
+
+            const int32_t connectedRssi = WiFi.RSSI();
+            if (connectedRssi <= WIFI_ROAM_RSSI_THRESHOLD_DBM) {
+                _roamSettlePending = true;
+                _roamSettleStartedMs = now;
+                _roamRetryPending = false;
+                _roamScanFailureCount = 0;
+                Serial.print('['); Serial.print(now);
+                Serial.print(" ms] WIFI_ROAM_WAIT currentRssi=");
+                Serial.print(connectedRssi);
+                Serial.print(" dBm settleMs=");
+                Serial.println(WIFI_ROAM_CONNECTION_SETTLE_MS);
+            }
         } else if (now - _lastRssiLogMs >= WIFI_RSSI_LOG_INTERVAL_MS) {
             Serial.print('['); Serial.print(now); Serial.print(" ms] WIFI_RSSI rssi=");
             Serial.print(WiFi.RSSI()); Serial.println(" dBm");
@@ -197,13 +217,47 @@ void NetworkManager::updateRoaming(unsigned long now)
 
         _roamScanActive = false;
         if (scanResult == WIFI_SCAN_FAILED) {
-            Serial.print('['); Serial.print(now);
-            Serial.println(" ms] WIFI_ROAM_SCAN_FAILED");
-            WiFi.scanDelete();
+            handleRoamingScanFailure(now, "WIFI_ROAM_SCAN_FAILED");
             return;
         }
 
         finishRoamingScan(scanResult, now);
+        return;
+    }
+
+    if (_roamSettlePending) {
+        if (now - _roamSettleStartedMs < WIFI_ROAM_CONNECTION_SETTLE_MS) return;
+
+        _roamSettlePending = false;
+        const int32_t currentRssi = WiFi.RSSI();
+        if (currentRssi > WIFI_ROAM_RSSI_THRESHOLD_DBM) {
+            _lastRoamCheckMs = now;
+            _roamScanFailureCount = 0;
+            Serial.print('['); Serial.print(now);
+            Serial.print(" ms] WIFI_ROAM_WAIT_COMPLETE reason=signal_recovered rssi=");
+            Serial.print(currentRssi); Serial.println(" dBm");
+            return;
+        }
+
+        startRoamingScan(now, currentRssi);
+        return;
+    }
+
+    if (_roamRetryPending) {
+        if (now - _roamRetryRequestedMs < WIFI_ROAM_SCAN_RETRY_DELAY_MS) return;
+
+        _roamRetryPending = false;
+        const int32_t currentRssi = WiFi.RSSI();
+        if (currentRssi > WIFI_ROAM_RSSI_THRESHOLD_DBM) {
+            _lastRoamCheckMs = now;
+            _roamScanFailureCount = 0;
+            Serial.print('['); Serial.print(now);
+            Serial.print(" ms] WIFI_ROAM_SCAN_RETRY_SKIPPED reason=signal_recovered rssi=");
+            Serial.print(currentRssi); Serial.println(" dBm");
+            return;
+        }
+
+        startRoamingScan(now, currentRssi);
         return;
     }
 
@@ -228,7 +282,8 @@ void NetworkManager::startRoamingScan(unsigned long now, int32_t currentRssi)
     Serial.print(" ms] WIFI_ROAM_SCAN_STARTED currentBssid=");
     Serial.print(WiFi.BSSIDstr());
     Serial.print(" currentRssi="); Serial.print(currentRssi);
-    Serial.println(" dBm");
+    Serial.print(" dBm attempt=");
+    Serial.println(_roamScanFailureCount + 1);
 
     // Async scan keeps the main loop cooperative while checking all APs.
     const int16_t scanResult = WiFi.scanNetworks(true);
@@ -238,9 +293,7 @@ void NetworkManager::startRoamingScan(unsigned long now, int32_t currentRssi)
     }
 
     if (scanResult == WIFI_SCAN_FAILED) {
-        Serial.print('['); Serial.print(now);
-        Serial.println(" ms] WIFI_ROAM_SCAN_FAILED_TO_START");
-        WiFi.scanDelete();
+        handleRoamingScanFailure(now, "WIFI_ROAM_SCAN_FAILED_TO_START");
         return;
     }
 
@@ -251,6 +304,9 @@ void NetworkManager::startRoamingScan(unsigned long now, int32_t currentRssi)
 
 void NetworkManager::finishRoamingScan(int16_t networkCount, unsigned long now)
 {
+    _roamScanFailureCount = 0;
+    _roamRetryPending = false;
+
     uint8_t currentBssid[6] = {0};
     const uint8_t* connectedBssid = WiFi.BSSID();
     if (connectedBssid) {
@@ -312,12 +368,50 @@ void NetworkManager::finishRoamingScan(int16_t networkCount, unsigned long now)
     connectToAccessPoint(bestChannel, bestBssid, bestRssi);
 }
 
+void NetworkManager::handleRoamingScanFailure(
+    unsigned long now,
+    const char* eventName
+)
+{
+    WiFi.scanDelete();
+    if (_roamScanFailureCount < 255) ++_roamScanFailureCount;
+
+    Serial.print('['); Serial.print(now); Serial.print(" ms] ");
+    Serial.print(eventName);
+    Serial.print(" failure=");
+    Serial.println(_roamScanFailureCount);
+
+    if (_roamScanFailureCount < WIFI_ROAM_MAX_SCAN_FAILURES) {
+        _roamRetryPending = true;
+        _roamRetryRequestedMs = now;
+        Serial.print('['); Serial.print(now);
+        Serial.print(" ms] WIFI_ROAM_SCAN_RETRY_SCHEDULED delay=");
+        Serial.print(WIFI_ROAM_SCAN_RETRY_DELAY_MS);
+        Serial.print(" ms nextAttempt=");
+        Serial.println(_roamScanFailureCount + 1);
+        return;
+    }
+
+    _roamRetryPending = false;
+    Serial.print('['); Serial.print(now);
+    Serial.print(" ms] WIFI_ROAM_SCAN_GIVE_UP failures=");
+    Serial.println(_roamScanFailureCount);
+    _roamScanFailureCount = 0;
+}
+
 void NetworkManager::cancelRoamingScan()
 {
-    if (!_roamScanActive) return;
+    const bool hadRoamingWork = isRoaming();
+    if (_roamScanActive) WiFi.scanDelete();
+
     _roamScanActive = false;
-    WiFi.scanDelete();
-    Serial.println("NetworkManager: roaming scan cancelled.");
+    _roamSettlePending = false;
+    _roamRetryPending = false;
+    _roamScanFailureCount = 0;
+
+    if (hadRoamingWork) {
+        Serial.println("NetworkManager: roaming work cancelled.");
+    }
 }
 
 void NetworkManager::logConnectionFailure(int status, unsigned long now)
