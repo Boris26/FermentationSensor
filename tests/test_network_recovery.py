@@ -4,7 +4,9 @@ import unittest
 
 ROOT = Path(__file__).parents[1]
 SERVER = (ROOT / "src/network/ServerClient.cpp").read_text()
+SERVER_HEADER = (ROOT / "include/network/ServerClient.h").read_text()
 NETWORK = (ROOT / "src/network/NetworkManager.cpp").read_text()
+NETWORK_HEADER = (ROOT / "include/network/NetworkManager.h").read_text()
 GATEWAY = (ROOT / "src/app/GatewayConnectionManager.cpp").read_text()
 APP = (ROOT / "src/app/FermentationSensorApplication.cpp").read_text()
 
@@ -38,6 +40,26 @@ class NetworkRecoveryTests(unittest.TestCase):
         sensors = APP.index("_sensorSession.updateMeasurements", network)
         self.assertLess(network, sensors)
         self.assertNotIn("delay(", APP[APP.index("void FermentationSensorApplication::update()") :])
+
+    def test_gateway_waits_for_initial_wifi_roaming(self):
+        self.assertIn("bool isRoaming() const", NETWORK_HEADER)
+        self.assertIn("if (_networkManager.isRoaming())", GATEWAY)
+        roaming_check = GATEWAY.index("if (_networkManager.isRoaming())")
+        cached_connect = GATEWAY.index("Gateway: trying last-known endpoint cache first.")
+        self.assertLess(roaming_check, cached_connect)
+
+    def test_gateway_enforces_socket_backoff_after_blocking_connect_attempt(self):
+        self.assertIn("currentReconnectDelayMs() const", SERVER_HEADER)
+        self.assertIn("_nextServerUpdateMs", GATEWAY)
+        self.assertIn("socketRetryGuardActive", GATEWAY)
+        self.assertIn("Gateway: socket retry guard delay=", GATEWAY)
+
+    def test_cached_endpoint_does_not_get_second_attempt_in_same_loop(self):
+        cached = GATEWAY.index("Gateway: trying last-known endpoint cache first.")
+        discovery = GATEWAY.index("Gateway: endpoint failed; starting rediscovery.", cached)
+        first_return = GATEWAY.index("return;", discovery)
+        endpoint_update = GATEWAY.index("if (_endpointActive)", cached)
+        self.assertLess(first_return, endpoint_update)
 
 
 if __name__ == "__main__":
