@@ -2,6 +2,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 #include "config/SensorConfig.h"
 
 
@@ -12,13 +15,21 @@ constexpr unsigned long SERIAL_BAUD_RATE = 115200;
 
 
 // Pins
-constexpr uint8_t ONE_WIRE_PIN = 4;
-
+// Use the Nano board aliases in firmware so these never get confused with raw
+// ESP32 GPIO numbers. Numeric fallbacks keep the host-only C++ tests portable.
+#ifdef ARDUINO
+constexpr uint8_t ONE_WIRE_PIN = D2;          // GPIO5
+constexpr uint8_t MEASUREMENT_BUTTON_PIN = D3; // GPIO6
+constexpr uint8_t STATUS_LED_PIN = D4;         // GPIO7
+constexpr uint8_t SENSOR_ERROR_LED_PIN = D5;   // GPIO8
+constexpr uint8_t SESSION_LED_PIN = D6;        // GPIO9
+#else
+constexpr uint8_t ONE_WIRE_PIN = 2;
 constexpr uint8_t MEASUREMENT_BUTTON_PIN = 3;
-
-constexpr uint8_t STATUS_LED_PIN = 2;
+constexpr uint8_t STATUS_LED_PIN = 4;
 constexpr uint8_t SENSOR_ERROR_LED_PIN = 5;
 constexpr uint8_t SESSION_LED_PIN = 6;
+#endif
 
 
 // Temperature

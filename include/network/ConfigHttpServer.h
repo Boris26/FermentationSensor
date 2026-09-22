@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <WiFiNINA.h>
+#include <WiFi.h>
 #include "config/SensorConfigService.h"
 #include "device/DeviceIdentity.h"
 #include "session/MeasurementSession.h"

@@ -24,7 +24,7 @@ Socket nicht. `HEARTBEAT_INTERVAL_MS` war und ist in dieser Firmware nicht an ei
 Sender gekoppelt; die Firmware erzeugt also selbst keinen periodischen Ping.
 
 Aus dem Repository allein lässt sich nicht unterscheiden, ob das Gateway den TCP-/WS-
-Transport schließt oder ob der NINA-Transport ihn verliert. Der bisherige Code warf die
+Transport schließt oder ob der ESP32-WiFi-Transport ihn verliert. Der bisherige Code warf die
 entscheidende Information weg: Er prüfte nur `connected() == false` und schrieb danach
 die allgemeine Meldung `disconnected`. Die neuen Lifecycle-Logs erfassen deshalb den
 lokalen Auslöser, WLAN-Status, RSSI, Socket-Zustand und das Alter der letzten RX-/TX-

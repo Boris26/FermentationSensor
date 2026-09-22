@@ -1,38 +1,20 @@
-# Dedicated persistent storage
+# Persistent storage on ESP32 NVS
 
-The Arduino Nano RP2040 Connect has a 16 MiB QSPI flash, while the PlatformIO
-board definition limits the application image to 2 MiB. Mbed's default global
-`/kv/` TDBStore occupies only the final 8 KiB of flash. That small log-structured
-store can reach `MBED_ERROR_MEDIA_FULL` after enough rewrites even when the live
-payload is tiny.
+`FlashStorage` is backed by the ESP32 Arduino `Preferences` API and opens the read/write namespace `fermsensor`. The public storage methods remain the single persistence boundary for credentials, device identity, temperature assignments, gateway cache, sensor configuration and measurement-sequence state.
 
-FermentationSensor therefore uses its own 64 KiB TDBStore immediately below the
-legacy Mbed `/kv/` region. The location is derived at runtime from
-`kv_get_default_flash_addresses()` rather than hard-coded. Before opening the
-store, the firmware compares its start address with the linker symbol
-`__flash_binary_end` and refuses initialization if the two regions would overlap.
+NVS keys have a 15-character limit. Short application keys are stored unchanged;
+the three longer keys have explicit, collision-free aliases:
 
-On the first boot after this change, the firmware copies and verifies the known
-application records from the old `/kv/` store, including device identity, WiFi,
-temperature-sensor assignments, gateway cache, and the persistent measurement
-sequence state. Only after a layout marker has been written to the new store is
-the legacy `/kv/` store reset. No credential values are printed during migration.
+| Application key | NVS key |
+|---|---|
+| `temperature_config` | `temp_config_v1` |
+| `measurement_sequence_v1` | `measure_seq_v1` |
+| `sensor_config_v1` | `sensor_cfg_v1` |
 
-Expected boot diagnostics include:
+Unknown oversized keys are rejected. Binary reads validate the exact stored
+length. Writes are successful only when `Preferences` reports the complete
+requested length.
 
-```text
-APP_KV_START,0x...
-APP_KV_SIZE,65536
-LEGACY_KV_START,0x...
-LEGACY_KV_SIZE,8192
-FLASH_STORAGE_MIGRATION_START
-FLASH_STORAGE_MIGRATED,<key>,<size>
-FLASH_STORAGE_MIGRATION_SUCCESS
-FLASH_STORAGE_LEGACY_CLEANUP_OK
-```
+`factoryReset()`/`clearAll()` clear the namespace. `clearWifi()` removes only credential records. No data is imported from older hardware: a Nano ESP32 is provisioned as a new physical device.
 
-Subsequent boots skip the migration and use the 64 KiB application store directly.
-The `COMPACT_STORAGE` maintenance command still operates only on the dedicated
-application store; a factory reset clears the legacy store first and then the
-application store so stale configuration cannot be imported again after a partial
-reset.
+The device UUID is created once and written as part of `device_config`. Later boots validate and load that record. Measurement sequence allocation remains reserve-before-use: the next block boundary is persisted before values from a block can be returned, so a reboot may skip values but never repeats an allocated range.

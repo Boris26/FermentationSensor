@@ -7,11 +7,6 @@ namespace
 constexpr char WIFI_CONFIG_KEY[] =
     "wifi_config";
 
-constexpr char LEGACY_WIFI_SSID_KEY[] =
-    "wifi_ssid";
-
-constexpr char LEGACY_WIFI_PASSWORD_KEY[] =
-    "wifi_password";
 }
 
 
@@ -26,50 +21,6 @@ WifiCredentialStore::WifiCredentialStore(
 bool WifiCredentialStore::begin()
 {
     _initialized = true;
-
-    if (!_storage.exists(WIFI_CONFIG_KEY)) {
-        WifiCredentials legacyCredentials;
-
-        if (
-            _storage.getString(
-                LEGACY_WIFI_SSID_KEY,
-                legacyCredentials.ssid
-            ) &&
-            _storage.getString(
-                LEGACY_WIFI_PASSWORD_KEY,
-                legacyCredentials.password
-            )
-        ) {
-            Serial.println(
-                "WifiCredentialStore: migrating legacy credentials."
-            );
-
-            if (!save(legacyCredentials)) {
-                Serial.println(
-                    "WifiCredentialStore: legacy migration failed."
-                );
-
-                return false;
-            }
-
-            const bool legacySsidRemoved =
-                removeIfPresent(LEGACY_WIFI_SSID_KEY);
-
-            const bool legacyPasswordRemoved =
-                removeIfPresent(LEGACY_WIFI_PASSWORD_KEY);
-
-            if (
-                !legacySsidRemoved ||
-                !legacyPasswordRemoved
-            ) {
-                Serial.println(
-                    "WifiCredentialStore: failed to remove legacy credentials."
-                );
-
-                return false;
-            }
-        }
-    }
 
     Serial.println(
         "WifiCredentialStore: ready."
@@ -204,20 +155,7 @@ bool WifiCredentialStore::clear()
         return false;
     }
 
-    const bool configRemoved =
-        removeIfPresent(WIFI_CONFIG_KEY);
-
-    const bool legacySsidRemoved =
-        removeIfPresent(LEGACY_WIFI_SSID_KEY);
-
-    const bool legacyPasswordRemoved =
-        removeIfPresent(LEGACY_WIFI_PASSWORD_KEY);
-
-    if (
-        !configRemoved ||
-        !legacySsidRemoved ||
-        !legacyPasswordRemoved
-    ) {
+    if (_storage.exists(WIFI_CONFIG_KEY) && !_storage.remove(WIFI_CONFIG_KEY)) {
         Serial.println(
             "WifiCredentialStore: failed to clear credentials."
         );
@@ -241,14 +179,4 @@ bool WifiCredentialStore::isValid(
         credentials.isValid() &&
         credentials.ssid.length() <= MAX_SSID_LENGTH &&
         credentials.password.length() <= MAX_PASSWORD_LENGTH;
-}
-
-
-bool WifiCredentialStore::removeIfPresent(
-    const char* key
-)
-{
-    return
-        !_storage.exists(key) ||
-        _storage.remove(key);
 }

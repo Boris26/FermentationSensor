@@ -18,6 +18,7 @@ Lwlp5000Driver::Lwlp5000Driver(TwoWire& wire) : _wire(wire) {}
 
 bool Lwlp5000Driver::begin()
 {
+    // The Nano ESP32 variant routes the default Wire bus to A4/SDA and A5/SCL.
     _wire.begin();
     _wire.beginTransmission(I2C_ADDRESS);
     _initialized = _wire.endTransmission() == 0;

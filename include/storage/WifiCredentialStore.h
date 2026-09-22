@@ -38,10 +38,6 @@ private:
         const WifiCredentials& credentials
     ) const;
 
-    bool removeIfPresent(
-        const char* key
-    );
-
     FlashStorage& _storage;
 
     bool _initialized = false;

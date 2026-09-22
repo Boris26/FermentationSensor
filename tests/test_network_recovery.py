@@ -25,8 +25,8 @@ class NetworkRecoveryTests(unittest.TestCase):
     def test_repeated_tcp_failure_escalates_to_wifi(self):
         self.assertIn("WIFI_RECOVERY_FAILURE_THRESHOLD", GATEWAY)
         self.assertIn("_networkManager.requestReconnect(", GATEWAY)
-        self.assertIn("WiFi.disconnect();", NETWORK)
-        self.assertIn("WiFi.end();", NETWORK)
+        self.assertIn("WiFi.disconnect(true, false);", NETWORK)
+        self.assertIn("WiFi.mode(WIFI_STA);", NETWORK)
 
     def test_wifi_diagnostics_cover_route_and_signal(self):
         for call in ("WiFi.status()", "WiFi.localIP()", "WiFi.gatewayIP()",
