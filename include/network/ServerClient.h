@@ -38,6 +38,7 @@ public:
     void requestReconnect();
 
     uint8_t failedConnectionCycles() const;
+    unsigned long currentReconnectDelayMs() const { return _reconnectIntervalMs; }
 
     bool sendMeasurement(const OutboxEntry& measurement, uint32_t nowMs);
     bool sendMeasurementState(MeasurementState state);
