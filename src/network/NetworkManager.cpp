@@ -22,6 +22,16 @@ const char* wifiStatusName(int status)
     }
 }
 
+void configureAccessPointSelection()
+{
+    // The same SSID may be provided by multiple access points/repeaters.
+    // Scan all channels before connecting and let the ESP32 select the
+    // matching BSSID with the strongest RSSI instead of stopping at the
+    // first acceptable access point it encounters.
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+    WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+}
+
 void printNetworkDiagnostics()
 {
     Serial.print("NetworkManager: status="); Serial.print(WiFi.status());
@@ -41,10 +51,12 @@ void NetworkManager::begin(const WifiCredentials& credentials)
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.persistent(false);
+    configureAccessPointSelection();
     if (!_credentials.isValid()) {
         Serial.println("NetworkManager: no valid WiFi credentials.");
         return;
     }
+    Serial.println("NetworkManager: access point selection=all-channel strongest-signal");
     connect();
 }
 
@@ -62,6 +74,7 @@ void NetworkManager::update()
         if (now - _restartRequestedMs < WIFI_RESTART_SETTLE_MS) return;
         _restartPending = false;
         WiFi.mode(WIFI_STA);
+        configureAccessPointSelection();
         connect();
         return;
     }
@@ -103,6 +116,7 @@ void NetworkManager::requestReconnect(const char* reason)
 void NetworkManager::connect()
 {
     const unsigned long now = millis();
+    configureAccessPointSelection();
     Serial.print('['); Serial.print(now); Serial.print(" ms] WIFI_CONNECT_ATTEMPT ssid=");
     Serial.print(_credentials.ssid); Serial.print(" statusBefore=");
     Serial.println(wifiStatusName(WiFi.status()));
