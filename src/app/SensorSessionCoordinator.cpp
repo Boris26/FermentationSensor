@@ -50,9 +50,27 @@ void SensorSessionCoordinator::initializeSessionIfSensorsReady()
 void SensorSessionCoordinator::updateSensorInitialization()
 {
     if (_temperatureSensor.isConversionInProgress()) return;
+
     const unsigned long now = millis();
     if (now - _lastSensorCheckMs < SENSOR_CHECK_INTERVAL_MS) return;
     _lastSensorCheckMs = now;
+
+    // First evaluate the cheap readiness state. In normal operation this uses
+    // the result of the most recent real temperature measurement and performs
+    // no DallasTemperature::begin() rediscovery.
+    initializeSessionIfSensorsReady();
+    if (_sensorsReady) return;
+
+    // A full OneWire rediscovery is comparatively expensive on the Nano ESP32.
+    // Run it only while sensors are unavailable, and at a much lower cadence.
+    if (
+        _lastSensorRecoveryScanMs != 0 &&
+        now - _lastSensorRecoveryScanMs < SENSOR_RECOVERY_SCAN_INTERVAL_MS
+    ) {
+        return;
+    }
+
+    _lastSensorRecoveryScanMs = now;
     _temperatureSensor.refresh();
     initializeSessionIfSensorsReady();
 }

@@ -188,6 +188,11 @@ void TemperatureSensor::begin()
             Serial.println("disconnected");
         }
     }
+
+    // Take one real reading immediately after boot. This confirms both stored
+    // sensor identities early and lets the steady-state readiness check use the
+    // cached measurement result instead of repeatedly scanning the OneWire bus.
+    _immediateMeasurementRequested = true;
 }
 
 bool TemperatureSensor::update()
@@ -264,7 +269,7 @@ bool TemperatureSensor::update()
                 temperature;
 
             ambientMeasurementReceived =
-                true;           
+                true;
         }
         else if (isBeerSensor(address)) {
             if (temperature == DEVICE_DISCONNECTED_C) {
@@ -279,12 +284,12 @@ bool TemperatureSensor::update()
                 temperature;
 
             beerMeasurementReceived =
-                true;           
+                true;
         }
         else {
             Serial.print(
                 "Unknown sensor "
-            );           
+            );
         }
     }
 
@@ -350,11 +355,11 @@ unsigned long TemperatureSensor::getConversionTimeMs()
 
 bool TemperatureSensor::areAllSensorsConnected()
 {
-    if (
-        _measurementAttempted &&
-        !_lastMeasurementValid
-    ) {
-        return false;
+    // Once a real measurement has completed it is the cheapest and strongest
+    // readiness signal: both configured sensors had to return valid values.
+    // Avoid rediscovering the OneWire bus on every one-second readiness check.
+    if (_measurementAttempted) {
+        return _lastMeasurementValid;
     }
 
     // Solange noch kein Ambient-Sensor konfiguriert
@@ -471,6 +476,13 @@ void TemperatureSensor::refresh()
     }
 
     _sensors.begin();
+
+    // A rediscovery invalidates the previous measurement-health result. The
+    // following readiness check may use the newly discovered addresses, and a
+    // fresh asynchronous conversion is requested immediately afterwards.
+    _measurementAttempted = false;
+    _lastMeasurementValid = false;
+    _immediateMeasurementRequested = true;
 }
 
 

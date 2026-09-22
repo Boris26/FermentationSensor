@@ -70,7 +70,11 @@ constexpr unsigned long HEARTBEAT_INTERVAL_MS = 60000;
 
 
 // Sensor checks
+// Readiness is cheap to evaluate once a temperature measurement has completed.
+// A full DallasTemperature::begin() rediscovery is intentionally much less
+// frequent and is only used while the temperature sensors are unavailable.
 constexpr unsigned long SENSOR_CHECK_INTERVAL_MS = 1000;
+constexpr unsigned long SENSOR_RECOVERY_SCAN_INTERVAL_MS = 5000;
 
 
 // LEDs

@@ -55,4 +55,5 @@ private:
     bool _sessionInitialized = false;
     bool _initialMeasurementPending = false;
     unsigned long _lastSensorCheckMs = 0;
+    unsigned long _lastSensorRecoveryScanMs = 0;
 };
