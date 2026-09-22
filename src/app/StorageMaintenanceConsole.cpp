@@ -48,7 +48,7 @@ void StorageMaintenanceConsole::update(bool measurementSequenceReady)
             Serial.println("STORAGE_MAINTENANCE_RESTARTING");
             Serial.flush();
             delay(50);
-            NVIC_SystemReset();
+            ESP.restart();
         }
         return;
     }
