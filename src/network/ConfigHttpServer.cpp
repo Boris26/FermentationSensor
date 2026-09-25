@@ -86,13 +86,13 @@ const char* measurementStateName(MeasurementState state)
 String sensorIdString(const TemperatureSensorId& id)
 {
     if (!id.isValid()) return "";
-    static const char HEX[] = "0123456789ABCDEF";
+    static const char HEX_DIGITS[] = "0123456789ABCDEF";
     String value;
     value.reserve(23);
     for (size_t i = 0; i < TemperatureSensorId::SIZE; ++i) {
         if (i > 0) value += ':';
-        value += HEX[(id.bytes[i] >> 4) & 0x0F];
-        value += HEX[id.bytes[i] & 0x0F];
+        value += HEX_DIGITS[(id.bytes[i] >> 4) & 0x0F];
+        value += HEX_DIGITS[id.bytes[i] & 0x0F];
     }
     return value;
 }
