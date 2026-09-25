@@ -50,6 +50,10 @@ void PressureSensor::begin()
         "PressureSensor: initializing..."
     );
 
+    _readAttempted = false;
+    _lastReadValid = false;
+    _lastReadError = Lwlp5000ReadError::NOT_INITIALIZED;
+
     const bool initialized = _driver.begin();
 
     if (!initialized)
@@ -62,6 +66,7 @@ void PressureSensor::begin()
     }
 
     _available = true;
+    _lastReadError = Lwlp5000ReadError::NONE;
 
     Serial.println(
         "PressureSensor: ready."
@@ -89,6 +94,10 @@ void PressureSensor::update()
     _lastReadMs = now;
 
     const Lwlp5000Sample sample = _driver.read();
+    _readAttempted = true;
+    _lastReadValid = sample.valid;
+    _lastReadError = sample.error;
+
     if (!sample.valid) {
         if (
             _config.rawPressureDiagnosticsEnabled &&
@@ -216,6 +225,21 @@ bool PressureSensor::isAvailable() const
 float PressureSensor::getPressurePa() const
 {
     return _pressurePa;
+}
+
+bool PressureSensor::hasReadAttempted() const
+{
+    return _readAttempted;
+}
+
+bool PressureSensor::isLastReadValid() const
+{
+    return _readAttempted && _lastReadValid;
+}
+
+const char* PressureSensor::getLastReadErrorName() const
+{
+    return pressureReadErrorName(_lastReadError);
 }
 
 bool PressureSensor::hasCompletedBubbleActivityWindow() const

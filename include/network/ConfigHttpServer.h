@@ -6,12 +6,15 @@
 #include "device/DeviceIdentity.h"
 #include "session/MeasurementSession.h"
 
+class PressureSensor;
 class ServerClient;
+class TemperatureSensor;
 
 class ConfigHttpServer {
 public:
     ConfigHttpServer(SensorConfigService& config, DeviceIdentity& identity,
-        MeasurementSession& session, ServerClient& gateway);
+        MeasurementSession& session, ServerClient& gateway,
+        TemperatureSensor& temperatureSensor, PressureSensor& pressureSensor);
     void begin();
     void update();
 private:
@@ -22,6 +25,8 @@ private:
     DeviceIdentity& _identity;
     MeasurementSession& _session;
     ServerClient& _gateway;
+    TemperatureSensor& _temperatureSensor;
+    PressureSensor& _pressureSensor;
     WiFiServer _server;
     WiFiClient _client;
     String _headers;

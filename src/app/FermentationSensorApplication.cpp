@@ -26,7 +26,8 @@ FermentationSensorApplication::FermentationSensorApplication() :
     _temperatureSensor(ONE_WIRE_PIN, _temperatureSensorStore),
     _measurementButton(MEASUREMENT_BUTTON_PIN),
     _configHttpServer(
-        _sensorConfigService, _deviceIdentity, _measurementSession, _serverClient
+        _sensorConfigService, _deviceIdentity, _measurementSession, _serverClient,
+        _temperatureSensor, _pressureSensor
     ),
     _statusLed(STATUS_LED_PIN),
     _sessionLed(SESSION_LED_PIN),

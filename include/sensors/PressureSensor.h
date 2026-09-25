@@ -19,12 +19,18 @@ public:
 
     bool isAvailable() const;
     float getPressurePa() const;
+    bool hasReadAttempted() const;
+    bool isLastReadValid() const;
+    const char* getLastReadErrorName() const;
     bool hasCompletedBubbleActivityWindow() const;
     const BubbleActivityWindow& completedBubbleActivityWindow() const;
     void acknowledgeCompletedBubbleActivityWindow();
 
 private:
     bool _available = false;
+    bool _readAttempted = false;
+    bool _lastReadValid = false;
+    Lwlp5000ReadError _lastReadError = Lwlp5000ReadError::NOT_INITIALIZED;
     float _pressurePa = 0.0f;
     Lwlp5000Driver _driver;
     PressureBubbleDetector _bubbleDetector;

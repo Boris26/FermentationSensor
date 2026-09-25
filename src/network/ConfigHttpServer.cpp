@@ -1,6 +1,8 @@
 #include "network/ConfigHttpServer.h"
 #include "ConfigPage.h"
 #include "network/ServerClient.h"
+#include "sensors/PressureSensor.h"
+#include "sensors/TemperatureSensor.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -70,10 +72,91 @@ String configJson(const SensorConfig& c)
     s += "},\"temperature\":{\"sendDeltaC\":" + String(c.temperatureSendDeltaC,6) + "}}"; return s;
 }
 String jsonEscape(const String& input) { String out; for (size_t i=0;i<input.length();++i) { const char c=input[i]; if (c == '\\' || c == '"') out += '\\'; out += c; } return out; }
+
+const char* measurementStateName(MeasurementState state)
+{
+    switch (state) {
+        case MeasurementState::IDLE: return "IDLE";
+        case MeasurementState::RUNNING: return "RUNNING";
+        case MeasurementState::PAUSED: return "PAUSED";
+    }
+    return "UNKNOWN";
 }
 
-ConfigHttpServer::ConfigHttpServer(SensorConfigService& config, DeviceIdentity& identity, MeasurementSession& session, ServerClient& gateway)
- : _config(config), _identity(identity), _session(session), _gateway(gateway), _server(PORT) {}
+String sensorIdString(const TemperatureSensorId& id)
+{
+    if (!id.isValid()) return "";
+    static const char HEX[] = "0123456789ABCDEF";
+    String value;
+    value.reserve(23);
+    for (size_t i = 0; i < TemperatureSensorId::SIZE; ++i) {
+        if (i > 0) value += ':';
+        value += HEX[(id.bytes[i] >> 4) & 0x0F];
+        value += HEX[id.bytes[i] & 0x0F];
+    }
+    return value;
+}
+
+void appendError(String& json, bool& first, const String& error)
+{
+    if (!first) json += ',';
+    json += '\"'; json += jsonEscape(error); json += '\"';
+    first = false;
+}
+
+String statusJson(const MeasurementSession& session, const ServerClient& gateway,
+    const TemperatureSensor& temperature, const PressureSensor& pressure)
+{
+    const bool temperatureAttempted = temperature.hasMeasurementAttempted();
+    const bool temperatureReady = temperature.isLastMeasurementValid();
+    const bool pressureAvailable = pressure.isAvailable();
+    const bool pressureAttempted = pressure.hasReadAttempted();
+    const bool pressureReady = pressure.isLastReadValid();
+
+    String s = "{\"measurementState\":\"";
+    s += measurementStateName(session.getState());
+    s += "\",\"wifi\":{\"rssi\":"; s += String(WiFi.RSSI());
+    s += "},\"gateway\":{\"connected\":"; s += gateway.isConnected() ? "true" : "false";
+    s += ",\"registered\":"; s += gateway.isRegistered() ? "true" : "false";
+    s += ",\"beerId\":\""; s += jsonEscape(gateway.finishedBeerId()); s += "\"}";
+
+    s += ",\"temperature\":{\"attempted\":"; s += temperatureAttempted ? "true" : "false";
+    s += ",\"ready\":"; s += temperatureReady ? "true" : "false";
+    s += ",\"ambientId\":\""; s += sensorIdString(temperature.getAmbientSensorId()); s += "\"";
+    s += ",\"beerId\":\""; s += sensorIdString(temperature.getBeerSensorId()); s += "\"";
+    s += ",\"ambientC\":";
+    if (temperatureReady) s += String(temperature.getAmbientTemperature(), 2); else s += "null";
+    s += ",\"beerC\":";
+    if (temperatureReady) s += String(temperature.getBeerTemperature(), 2); else s += "null";
+    s += '}';
+
+    s += ",\"pressure\":{\"available\":"; s += pressureAvailable ? "true" : "false";
+    s += ",\"attempted\":"; s += pressureAttempted ? "true" : "false";
+    s += ",\"ready\":"; s += pressureReady ? "true" : "false";
+    s += ",\"pa\":";
+    if (pressureReady) s += String(pressure.getPressurePa(), 2); else s += "null";
+    s += ",\"error\":\"";
+    if (!pressureAvailable) s += "INITIALIZATION_FAILED";
+    else if (pressureAttempted && !pressureReady) s += pressure.getLastReadErrorName();
+    s += "\"}";
+
+    s += ",\"errors\":[";
+    bool firstError = true;
+    if (!temperature.getAmbientSensorId().isValid()) appendError(s, firstError, "Ambient-Temperatursensor nicht konfiguriert");
+    if (!temperature.getBeerSensorId().isValid()) appendError(s, firstError, "Bier-Temperatursensor nicht konfiguriert");
+    if (temperatureAttempted && !temperatureReady) appendError(s, firstError, "Temperatursensoren liefern keine vollständige gültige Messung");
+    if (!pressureAvailable) appendError(s, firstError, "Drucksensor nicht verfügbar");
+    else if (pressureAttempted && !pressureReady) appendError(s, firstError, String("Druckmessung fehlgeschlagen: ") + pressure.getLastReadErrorName());
+    s += "]}";
+    return s;
+}
+}
+
+ConfigHttpServer::ConfigHttpServer(SensorConfigService& config, DeviceIdentity& identity,
+    MeasurementSession& session, ServerClient& gateway,
+    TemperatureSensor& temperatureSensor, PressureSensor& pressureSensor)
+ : _config(config), _identity(identity), _session(session), _gateway(gateway),
+   _temperatureSensor(temperatureSensor), _pressureSensor(pressureSensor), _server(PORT) {}
 
 void ConfigHttpServer::begin() {}
 
@@ -99,6 +182,7 @@ void ConfigHttpServer::processRequest()
     if (request == "GET /") respond(200,"text/html; charset=utf-8",CONFIG_PAGE);
     else if (request == "GET /api/config") respond(200,"application/json",configJson(_config.get()));
     else if (request == "GET /api/device") respond(200,"application/json",String("{\"deviceId\":\"") + jsonEscape(_identity.getDeviceId()) + "\",\"deviceName\":\"" + jsonEscape(_identity.getDeviceName()) + "\"}");
+    else if (request == "GET /api/status") respond(200,"application/json",statusJson(_session, _gateway, _temperatureSensor, _pressureSensor));
     else if (request == "POST /api/config") {
         if (_session.getState() != MeasurementState::IDLE) { respond(409,"application/json","{\"success\":false,\"error\":\"measurement session must be IDLE\"}"); return; }
         SensorConfig candidate = SensorConfig::defaults(); String parseError;

@@ -27,6 +27,14 @@ public:
     float getBeerTemperature() const;
     float getAmbientTemperature() const;
 
+    const TemperatureSensorId& getAmbientSensorId() const { return _ambientSensorId; }
+    const TemperatureSensorId& getBeerSensorId() const { return _beerSensorId; }
+    bool hasMeasurementAttempted() const { return _measurementAttempted; }
+    bool isLastMeasurementValid() const
+    {
+        return _measurementAttempted && _lastMeasurementValid;
+    }
+
 private:
     unsigned long getConversionTimeMs();
 
